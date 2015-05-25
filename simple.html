@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>WebGL cubic interpolation - Simple example</title>
+    <meta charset="utf-8" />
+
+    <script type="text/javascript" src="gl.cubicinterpolation.js"></script>
+    <script type="text/javascript">
+
+        function initImageTexture(src, onload) {
+            var image = new Image();
+            image.crossOrigin = '';
+            image.onload = function() { onload(image); };
+            image.src = src;
+        }
+
+        function loadImage(canvas) {
+            initCanvasGL(canvas);
+            initImageTexture(canvas.innerHTML, function(image) {
+                handleLoadedImage(canvas, image, image.width, image.height);
+            });
+        }
+
+        function webGLStart() {
+            var canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+            for (var index = 0; index < canvasArray.length; ++index) {
+                loadImage(canvasArray[index]);
+            }
+        }
+        
+    </script>
+</head>
+
+
+<body onload="webGLStart();">
+    <canvas class="gl.cubicinterpolation" style="border: none; width: 500px; height: 500px">Bucky.png</canvas>
+    <img src="Bucky.png" style="border: none; width: 500px; height: 500px" alt="" />
+    <br />
+    <canvas class="gl.cubicinterpolation" style="border: none; width: 500px; height: 500px">Bucky2.png</canvas>
+    <img src="Bucky2.png" style="border: none; width: 500px; height: 500px" alt="" />
+    <br />
+    <canvas class="gl.cubicinterpolation" style="border: none; width: 500px; height: 500px">Lena.png</canvas>
+    <img src="Lena.png" style="border: none; width: 500px; height: 500px" alt="" />
+    <br />
+</body>
+    
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>WebGL cubic interpolation - Performance measurements</title>
+    <meta charset="utf-8" />
+    
+    <script type="text/javascript" src="gl.cubicinterpolation.js"></script>
+    <script type="text/javascript" src="gl.eventhandlers.js"></script>
+    <script type="text/javascript">
+        
+        function myInitCanvasGL(canvas, width, height) {
+            canvas.width = width;
+            canvas.height = height;
+            
+            var gl = initGL(canvas);
+            initShaders(gl);
+            initTextureCoordBuffer(gl);
+            return gl;
+        }
+
+        function myHandleLoadedImage(gl, width, height) {
+            var img = new Uint8Array(width * height * 4);
+            for (var y = 0; y < height; y++)
+                for (var x = 0; x < width; x++) {
+                var index = (y * width + x) * 4;
+                img[index] = y * 255.0 / height;
+                img[index + 1] = Math.random() * 255; //255 - img[index];
+                img[index + 2] = x * 255.0 / width;
+                img[index + 3] = 255;
+            }
+
+            var t1 = performance.now();
+            var texture = gl.myTexture = gl.createTexture();
+            texture.width = width;
+            texture.height = height;
+
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, img);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+            gl.shaderPrefilter.textureCoordBuffer = initTextureCoordBuffer(gl, texture.width, texture.height);
+            gl.rttFramebufferTextureX = initTextureFramebuffer(gl, texture.width, texture.height);
+            gl.rttFramebufferTextureY = initTextureFramebuffer(gl, texture.width, texture.height);
+            return t1;
+        }
+
+        function measurePerformance() {
+            var canvas = document.getElementById("canvas_measure");
+            canvas.width = canvas.height = 500;
+            var gl = initGL(canvas);
+            var maxSize = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
+            
+            var imageWidth = [512, 640, 1024, 1920];
+            var imageHeight = [512, 480, 768, 1080];
+            var canvasWidth = [512, 1920, 2048, 7680];
+            var canvasHeight = [512, 1080, 1536, 4320];
+            
+            var i=0, i_max = imageWidth.length;
+            var j=0, j_max = canvasWidth.length;
+            
+            function test() {
+                var t0 = performance.now();
+                var gl = myInitCanvasGL(canvas, canvasWidth[j], canvasHeight[j]);
+                var t1 = myHandleLoadedImage(gl, imageWidth[i], imageHeight[i]);
+
+                var t2 = performance.now();
+                prefilterX(gl, gl.myTexture);
+                var t3 = performance.now();
+                prefilterY(gl, gl.myTexture);
+                var t4 = performance.now();
+                cubicFilter(gl, gl.rttFramebufferTextureY.texture, canvasWidth[j], canvasHeight[j]);
+                var t5 = performance.now();
+                
+                var table = document.getElementById("table_perf");
+                table.innerHTML = table.innerHTML + "<tr><td>" +
+                    imageWidth[i] + " x " + imageHeight[i] + "</td><td>" +
+                    canvasWidth[j] + " x " + canvasHeight[j] + "</td><td>" +
+                    (t1 - t0) * 1.0 + "</td><td>" +
+                    (t2 - t1) * 1.0 + "</td><td>" +
+                    (t3 - t2) * 1.0 + "</td><td>" +
+                    (t4 - t3) * 1.0 + "</td><td>" +
+                    (t5 - t4) * 1.0 + "</td></tr>";
+                    
+                freeResources(gl);
+                if (++i >= i_max) { j++; i=0; }
+                if (j < j_max && canvasWidth[j] < maxSize) setTimeout(test, 10);
+            }
+
+            setTimeout(test, 10);
+        }
+
+    </script>
+
+    <style>
+        table,th,td {
+            border:1px solid black;
+            border-collapse:collapse;
+        }
+    </style>
+</head>
+
+
+<body>
+    <p>
+    <canvas id="canvas_measure" style="border: none; width: 500px; height: 500px"></canvas><br />
+    <button type="button" onclick="measurePerformance()">Performance measurement</button><br />
+    </p>
+    
+    <table id="table_perf">
+        <tr>
+            <td>Image resolution</td>
+            <td>Canvas resolution</td>
+            <td>Create GL context</td>
+            <td>Upload texture</td>
+            <td>Pre-filter X (ms)</td>
+            <td>Pre-filter Y (ms)</td>
+            <td>Cubic filtering (ms)</td>
+        </tr>
+    </table>
+</body>
+    
+</html>

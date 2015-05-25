@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>WebGL cubic interpolation - Rotate example</title>
+    <meta charset="utf-8" />
+
+    <script type="text/javascript" src="gl.cubicinterpolation.js"></script>
+    <script type="text/javascript" src="gl.eventhandlers.js"></script>
+    <script type="text/javascript">
+
+        function initImageTexture(canvas, gl, src, onload) {
+            gl.image = new Image();
+            gl.image.crossOrigin = '';
+            gl.image.onload = function() { onload(canvas, gl, gl.image); };
+            gl.image.src = src;
+        }
+
+
+        function rotate(canvas, gl, image) {
+            gl.rotateAngle = Math.PI / 18.0;
+            var myBuffer = initTextureFramebuffer(gl, image.width, image.height);
+            gl.buffer = myBuffer.framebuffer;
+            handleLoadedImage(canvas, image, image.width, image.height);
+            var texture1 = myBuffer.texture;
+            var texture2 = gl.rttFramebufferTextureY.texture;
+            cubicFilter(gl, texture2, myBuffer.texture.width, myBuffer.texture.height);
+
+            for (var n=0; n<35; n++) {
+                if (gl.filterMode == 0) {
+                    prefilterX(gl, myBuffer.texture);
+                    prefilterY(gl, myBuffer.texture);
+                } else {
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, gl.buffer);
+                    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture2, 0);
+                    var temp = texture1;
+                    texture1 = texture2;
+                    texture2 = temp;
+                }
+                cubicFilter(gl, texture2, myBuffer.texture.width, myBuffer.texture.height);
+            }
+            gl.buffer = null;
+            gl.rotateAngle = 0.0;
+            if (gl.filterMode == 0) {
+                prefilterX(gl, myBuffer.texture);
+                prefilterY(gl, myBuffer.texture);
+            }  else {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, gl.buffer);
+                texture2 = texture1;
+            }
+            cubicFilter(gl, texture2, canvas.width, canvas.height);
+        }
+
+
+        function loadImage(canvas) {
+            var gl = initCanvasGL(canvas);
+            initImageTexture(canvas, gl, canvas.innerHTML, rotate);
+        }
+
+
+        function setFilterMode(mode) {
+            var canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+            for (var index = 0; index < canvasArray.length; ++index) {
+                var gl = canvasArray[index].gl;
+                gl.filterMode = mode;
+                rotate(canvasArray[index], gl, gl.image);
+            }
+        }
+
+
+        function webGLStart() {
+            var canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+            for (var index = 0; index < canvasArray.length; ++index) {
+                loadImage(canvasArray[index]);
+                addMouseEvents(canvasArray[index]);
+            }
+
+            var filterMode = 0;
+            addEventHandlers(function() { filterMode = (filterMode + 1) % 4; setFilterMode(filterMode); });
+        }
+        
+    </script>
+        
+</head>
+
+
+<body onload="webGLStart();">
+<p>
+    <canvas class="gl.cubicinterpolation" style="border: none; width: 512px; height: 512px">Lena.png</canvas>
+    <img src="Lena.png" style="border: none; width: 512px; height: 512px" alt="" />
+</p>
+<p>
+    Interpolation method:
+    <select onchange="setFilterMode(this.selectedIndex);">
+        <option>Prefiltered cubic interpolation</option>
+        <option>Cubic filtering without prefilter</option>
+        <option>Linear interpolation</option>
+        <option>Nearest neighbor interpolation</option>
+    </select>
+</p>
+</body>
+    
+</html>
