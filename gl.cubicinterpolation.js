@@ -1,5 +1,5 @@
 /*-------------------------------------------------------------------------------------------------------------------*\
-Copyright (c) 2008-2014, Danny Ruijters. All rights reserved.
+Copyright (c) 2008-2023, Danny Ruijters. All rights reserved.
 http://www.dannyruijters.nl/cubicinterpolation/webgl/
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -23,7 +23,7 @@ The views and conclusions contained in the software and documentation are those 
 interpreted as representing official policies, either expressed or implied.
 
 When using this code in a scientific project, please cite one or all of the following papers:
-*  Daniel Ruijters and Philippe Thévenaz, GPU Prefilter for Accurate Cubic B-Spline Interpolation, The Computer
+*  Daniel Ruijters and Philippe Thï¿½venaz, GPU Prefilter for Accurate Cubic B-Spline Interpolation, The Computer
    Journal, vol. 55, no. 1, pp. 15-20, January 2012. http://dannyruijters.nl/docs/cudaPrefilter3.pdf
 *  Daniel Ruijters, Bart M. ter Haar Romeny, and Paul Suetens, Efficient GPU-Based Texture Interpolation using Uniform
    B-Splines, Journal of Graphics Tools, vol. 13, no. 4, pp. 61-69, 2008.
@@ -32,8 +32,10 @@ When using this code in a scientific project, please cite one or all of the foll
 function initGL(canvas) {
     var gl;
     try {
-        gl = canvas.getContext("experimental-webgl");
+        gl = canvas.getContext("webgl2");
+        if (gl == null) { gl = canvas.getContext("experimental-webgl2"); }
         if (gl == null) { gl = canvas.getContext("webgl"); }
+        if (gl == null) { gl = canvas.getContext("experimental-webgl"); }
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         gl.disable(gl.DEPTH_TEST);
         gl.zoom = 1.0;
@@ -205,7 +207,8 @@ function initTextureFramebuffer(gl, width, height) {
     var extHalfFloat = gl.getExtension('OES_texture_half_float');
     var extHalfFloatBuffer = gl.getExtension('EXT_color_buffer_half_float');
     var texType = (extFloat && extFloatBuffer) ? gl.FLOAT : ((extHalfFloat && extHalfFloatBuffer) ? extHalfFloat.HALF_FLOAT_OES : gl.UNSIGNED_BYTE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, texType, null);
+    var internalType = (extFloat && extFloatBuffer) ? gl.RGBA32F : ((extHalfFloat && extHalfFloatBuffer) ? gl.RGBA16F : gl.RGBA);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalType, width, height, 0, gl.RGBA, texType, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
