@@ -3,63 +3,69 @@
 
 <head>
     <title>WebGL cubic interpolation: Live video</title>
-    <meta charset="utf-8" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <script type="text/javascript" src="gl.cubicinterpolation.js"></script>
-    <script type="text/javascript" src="gl.eventhandlers.js"></script>
-    <script type="text/javascript">
+    <script src="gl.cubicinterpolation.js"></script>
+    <script src="gl.eventhandlers.js"></script>
+    <script>
 
-        function initVideoTexture(canvas, src) {
-            var intervalID;
-            var videoElement = document.createElement('video');
+        function initVideoTexture(canvas, stream) {
+            let intervalID;
+            const videoElement = document.createElement('video');
             videoElement.autoplay = true;
-            videoElement.preload = "auto";
-            videoElement.addEventListener("canplaythrough", function() {
-                videoElement.play();
-                intervalID = setInterval(function() { handleLoadedImage(canvas, videoElement, videoElement.videoWidth, videoElement.videoHeight); }, 15);
-            }, true);
-            videoElement.addEventListener("ended", function() {clearInterval(intervalID);}, true);
-            videoElement.src = src;
+            videoElement.playsInline = true; //important for mobile devices
+            videoElement.muted = true; //required for autoplay in modern browsers
+            videoElement.srcObject = stream;
+            
+            videoElement.addEventListener("canplaythrough", () => {
+                videoElement.play().catch(err => { console.error("Error playing video:", err); });
+                intervalID = setInterval(() => { handleLoadedImage(canvas, videoElement, videoElement.videoWidth, videoElement.videoHeight); }, 15);
+            });
+            
+            videoElement.addEventListener("ended", () => { clearInterval(intervalID); });
         }
 
-
-        function drawLiveVideo(canvas) {
-            var hasUserMedia = navigator.webkitGetUserMedia ? true : false;
-            if (hasUserMedia) {
-                navigator.webkitGetUserMedia({'video': true, 'audio': false}, function(stream) {
-                    initCanvasGL(canvas);
-                    initVideoTexture(canvas, webkitURL.createObjectURL(stream));
-                }, function(error) {
-                    console.log("Failed to get a stream due to", error);
-                });
+        async function drawLiveVideo(canvas) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.error("getUserMedia is not supported in this browser");
+                return;
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                initCanvasGL(canvas);
+                initVideoTexture(canvas, stream);
+            } catch (error) {
+                console.error("Failed to get a stream due to:", error);
             }
         }
-
 
         function webGLStart() {
-            var canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-            for (index = 0; index < canvasArray.length; ++index) {
-                drawLiveVideo(canvasArray[index]);
-                addMouseEvents(canvasArray[index]);
+            const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+            for (let canvas of canvasArray) {
+                drawLiveVideo(canvas);
+                addMouseEvents(canvas);
             }
 
-            addEventHandlers(function() {
-                var canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-                for (var index = 0; index < canvasArray.length; ++index) {
-                    var gl = canvasArray[index].gl;
+            addEventHandlers(() => {
+                const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+                for (let canvas of canvasArray) {
+                    const gl = canvas.gl;
                     gl.filterMode = (gl.filterMode + 1) % 4;
-                    var texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
-                    cubicFilter(gl, texture, canvasArray[index].width, canvasArray[index].height);
+                    const texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
+                    cubicFilter(gl, texture, canvas.width, canvas.height);
                 }
             });
         }
         
-    </script>
-        
+        window.addEventListener('DOMContentLoaded', webGLStart);
+
+    </script>        
 </head>
 
 
-<body onload="webGLStart();">
+<body>
     <canvas class="gl.cubicinterpolation" style="border: none; width: 500px; height: 500px"></canvas>
 </body>
     
