@@ -41,6 +41,11 @@
         let peerConnection = null;
         let localCanvas = null;
         let remoteCanvas = null;
+        let signalingSocket = null;
+        let myClientId = null;
+        let remotePeerId = null;
+        
+        const SIGNALING_SERVER = 'ws://localhost:8080';
         
         const configuration = {
             iceServers: [
@@ -49,6 +54,118 @@
             ]
         };
 
+        function connectToSignalingServer() {
+            updateStatus('Connecting to signaling server...', 'status');
+            
+            try {
+                signalingSocket = new WebSocket(SIGNALING_SERVER);
+                
+                signalingSocket.onopen = () => {
+                    updateStatus('Connected to signaling server', 'success');
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = false;
+                };
+                
+                signalingSocket.onmessage = async (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        await handleSignalingMessage(message);
+                    } catch (error) {
+                        console.error('Error handling signaling message:', error);
+                        updateStatus(`Signaling error: ${error.message}`, 'error');
+                    }
+                };
+                
+                signalingSocket.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateStatus('Failed to connect to signaling server', 'error');
+                };
+                
+                signalingSocket.onclose = () => {
+                    updateStatus('Disconnected from signaling server', 'error');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = true;
+                    signalingSocket = null;
+                    myClientId = null;
+                };
+            } catch (error) {
+                updateStatus(`Connection error: ${error.message}`, 'error');
+            }
+        }
+        
+        function disconnectFromServer() {
+            if (signalingSocket) {
+                signalingSocket.close();
+            }
+            stopVideo();
+        }
+        
+        async function handleSignalingMessage(message) {
+            console.log('Received signaling message:', message.type);
+            
+            switch (message.type) {
+                case 'welcome':
+                    myClientId = message.clientId;
+                    updateStatus(`Connected as Client ${myClientId}. Total peers: ${message.totalClients - 1}`, 'success');
+                    addLogMessage(`You are Client ${myClientId}`);
+                    break;
+                    
+                case 'peer-connected':
+                    if (message.clientId !== myClientId) {
+                        addLogMessage(`Peer ${message.clientId} connected. Total peers: ${message.totalClients - 1}`);
+                        updateStatus(`Peer ${message.clientId} available. Ready to call.`, 'success');
+                        
+                        // If we have local stream and no existing connection, automatically call
+                        if (localStream && !peerConnection) {
+                            setTimeout(() => {
+                                remotePeerId = message.clientId;
+                                createAndSendOffer(message.clientId);
+                            }, 1000);
+                        }
+                    }
+                    break;
+                    
+                case 'peer-disconnected':
+                    addLogMessage(`Peer ${message.clientId} disconnected`);
+                    if (remotePeerId === message.clientId) {
+                        updateStatus('Remote peer disconnected', 'error');
+                        if (peerConnection) {
+                            peerConnection.close();
+                            peerConnection = null;
+                        }
+                    }
+                    break;
+                    
+                case 'offer':
+                    addLogMessage(`Received offer from Client ${message.senderId}`);
+                    await handleOffer(message.offer, message.senderId);
+                    break;
+                    
+                case 'answer':
+                    addLogMessage(`Received answer from Client ${message.senderId}`);
+                    await handleAnswer(message.answer);
+                    break;
+                    
+                case 'ice-candidate':
+                    if (message.candidate && peerConnection) {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+                        console.log('Added ICE candidate from remote peer');
+                    }
+                    break;
+            }
+        }
+        
+        function sendSignalingMessage(message) {
+            if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+                signalingSocket.send(JSON.stringify(message));
+            } else {
+                console.error('Cannot send message: WebSocket not connected');
+                updateStatus('Not connected to signaling server', 'error');
+            }
+        }
+        
         function initVideoTexture(canvas, stream, canvasId) {
             let intervalID;
             const videoElement = document.createElement('video');
@@ -94,10 +211,10 @@
                 initVideoTexture(localCanvas, localStream, 'local');
                 
                 document.getElementById('startBtn').disabled = true;
-                document.getElementById('createOfferBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = false;
                 
-                updateStatus("Local camera started successfully", 'success');
+                updateStatus("Local camera started. Waiting for peer...", 'success');
+                addLogMessage('Local camera started');
             } catch (error) {
                 updateStatus(`Failed to get local stream: ${error.message}`, 'error');
                 console.error("Error accessing media devices:", error);
@@ -130,10 +247,12 @@
             // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    console.log('New ICE candidate:', event.candidate);
-                    // In production, send this to the remote peer via signaling server
-                    // For now, we'll display it for manual exchange
-                    updateOfferDisplay();
+                    console.log('Sending ICE candidate to remote peer');
+                    sendSignalingMessage({
+                        type: 'ice-candidate',
+                        candidate: event.candidate,
+                        targetId: remotePeerId
+                    });
                 }
             };
             
@@ -149,43 +268,47 @@
             };
         }
 
-        async function createOffer() {
+        async function createAndSendOffer(targetId) {
             try {
+                remotePeerId = targetId;
                 await createPeerConnection();
                 
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 
-                document.getElementById('offerText').value = JSON.stringify(peerConnection.localDescription, null, 2);
-                document.getElementById('createOfferBtn').disabled = true;
-                document.getElementById('answerSection').style.display = 'block';
+                sendSignalingMessage({
+                    type: 'offer',
+                    offer: offer,
+                    targetId: targetId
+                });
                 
-                updateStatus("Offer created. Copy and send to remote peer.", 'success');live.html
+                addLogMessage(`Sent offer to Client ${targetId}`);
+                updateStatus(`Calling Client ${targetId}...`, 'status');
             } catch (error) {
                 updateStatus(`Error creating offer: ${error.message}`, 'error');
                 console.error("Error creating offer:", error);
             }
         }
 
-        async function handleAnswer() {
+        async function handleAnswer(answer) {
             try {
-                const answerText = document.getElementById('answerText').value;
-                const answer = JSON.parse(answerText);
-                
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                
-                document.getElementById('submitAnswerBtn').disabled = true;
-                updateStatus("Answer received and processed!", 'success');
+                updateStatus("Connected to remote peer!", 'success');
+                addLogMessage('Connection established');
             } catch (error) {
                 updateStatus(`Error handling answer: ${error.message}`, 'error');
                 console.error("Error handling answer:", error);
             }
         }
 
-        async function handleOffer() {
+        async function handleOffer(offer, senderId) {
             try {
-                const offerText = document.getElementById('receiveOfferText').value;
-                const offer = JSON.parse(offerText);
+                remotePeerId = senderId;
+                
+                if (!localStream) {
+                    updateStatus('Received call but camera not started. Starting camera...', 'status');
+                    await startLocalVideo();
+                }
                 
                 await createPeerConnection();
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -193,19 +316,17 @@
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 
-                document.getElementById('generatedAnswerText').value = JSON.stringify(peerConnection.localDescription, null, 2);
-                document.getElementById('receiveOfferBtn').disabled = true;
+                sendSignalingMessage({
+                    type: 'answer',
+                    answer: answer,
+                    targetId: senderId
+                });
                 
-                updateStatus("Answer created. Copy and send back to the offerer.", 'success');
+                addLogMessage(`Answered call from Client ${senderId}`);
+                updateStatus(`Answering call from Client ${senderId}...`, 'status');
             } catch (error) {
                 updateStatus(`Error handling offer: ${error.message}`, 'error');
                 console.error("Error handling offer:", error);
-            }
-        }
-
-        function updateOfferDisplay() {
-            if (peerConnection && peerConnection.localDescription) {
-                document.getElementById('offerText').value = JSON.stringify(peerConnection.localDescription, null, 2);
             }
         }
 
@@ -228,11 +349,22 @@
                 clearInterval(remoteCanvas.intervalID);
             }
             
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('createOfferBtn').disabled = true;
+            remotePeerId = null;
+            
+            document.getElementById('startBtn').disabled = signalingSocket ? false : true;
             document.getElementById('stopBtn').disabled = true;
             
             updateStatus("Stopped all video streams", 'status');
+            addLogMessage('Video stopped');
+        }
+        
+        function addLogMessage(message) {
+            const logDiv = document.getElementById('signalingLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(logEntry);
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
 
         function updateStatus(message, type = 'status') {
@@ -259,7 +391,7 @@
                 }
             });
             
-            updateStatus("Ready. Click 'Start Local Camera' to begin.", 'status');
+            updateStatus("Ready. Connect to signaling server first.", 'status');
         }
         
         window.addEventListener('DOMContentLoaded', webGLStart);
@@ -272,9 +404,10 @@
         
         <div class="controls">
             <h2>Controls</h2>
-            <button id="startBtn" onclick="startLocalVideo()">Start Local Camera</button>
-            <button id="createOfferBtn" onclick="createOffer()" disabled>Create Offer (Caller)</button>
-            <button id="stopBtn" onclick="stopVideo()" disabled>Stop</button>
+            <button id="connectBtn" onclick="connectToSignalingServer()">Connect to Server</button>
+            <button id="startBtn" onclick="startLocalVideo()" disabled>Start Local Camera</button>
+            <button id="stopBtn" onclick="stopVideo()" disabled>Stop Video</button>
+            <button id="disconnectBtn" onclick="disconnectFromServer()" disabled>Disconnect</button>
             <div id="status" class="status">Initializing...</div>
             <p><em>Press 'F' to toggle filter mode. Use mouse wheel to zoom, click and drag to pan.</em></p>
         </div>
@@ -292,47 +425,21 @@
         </div>
         
         <div class="controls signaling">
-            <h2>Signaling (Manual Copy/Paste)</h2>
-            
-            <div id="offerSection">
-                <h3>Step 1 (Caller): Send this offer to remote peer</h3>
-                <textarea id="offerText" readonly placeholder="Offer will appear here..."></textarea>
-            </div>
-            
-            <div id="answerSection" style="display:none;">
-                <h3>Step 2 (Caller): Paste answer from remote peer</h3>
-                <textarea id="answerText" placeholder="Paste answer here..."></textarea>
-                <button id="submitAnswerBtn" onclick="handleAnswer()">Submit Answer</button>
-            </div>
-            
-            <hr style="margin: 30px 0;">
-            
-            <div id="receiveOfferSection">
-                <h3>Step 1 (Answerer): Paste offer from caller</h3>
-                <textarea id="receiveOfferText" placeholder="Paste offer here..."></textarea>
-                <button id="receiveOfferBtn" onclick="handleOffer()">Process Offer & Create Answer</button>
-            </div>
-            
-            <div id="generatedAnswerSection">
-                <h3>Step 2 (Answerer): Send this answer back to caller</h3>
-                <textarea id="generatedAnswerText" readonly placeholder="Answer will appear here..."></textarea>
-            </div>
+            <h2>Signaling Log</h2>
+            <div id="signalingLog" style="height: 200px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px;"></div>
         </div>
         
         <div class="controls">
             <h2>Instructions</h2>
             <ol>
-                <li>Open this page in two different browser windows or tabs (or on two different devices)</li>
+                <li><strong>Start the signaling server:</strong> Run <code>node signaling-server.js</code> in the project directory</li>
+                <li>Open this page in two browser windows or tabs (same computer or different devices on same network)</li>
+                <li>In both windows, click "Connect to Server"</li>
                 <li>In both windows, click "Start Local Camera" and allow camera access</li>
-                <li><strong>In the first window (Caller):</strong> Click "Create Offer"</li>
-                <li>Copy the offer JSON and paste it into the second window's "Paste offer" field</li>
-                <li><strong>In the second window (Answerer):</strong> Click "Process Offer & Create Answer"</li>
-                <li>Copy the generated answer and paste it back into the first window's "Paste answer" field</li>
-                <li><strong>In the first window:</strong> Click "Submit Answer"</li>
-                <li>Wait a few seconds for the connection to establish</li>
-                <li>You should now see both local and remote video streams with WebGL cubic interpolation!</li>
+                <li>The peers will automatically connect via WebSocket signaling!</li>
+                <li>You should see both local and remote video streams with WebGL cubic interpolation</li>
             </ol>
-            <p><strong>Note:</strong> This uses manual signaling for simplicity. In production, you would use a signaling server (WebSocket, etc.) to exchange offers/answers automatically.</p>
+            <p><strong>Note:</strong> Make sure the signaling server is running on <code>ws://localhost:8080</code>. If using different devices, update the SIGNALING_SERVER constant in the code to use the server's IP address.</p>
         </div>
     </div>
 </body>
