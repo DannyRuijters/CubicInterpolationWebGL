@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>WebGL cubic interpolation: WebRTC Peer Connection</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <script src="gl.cubicinterpolation.js"></script>
+    <script src="gl.eventhandlers.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .video-container { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .video-box { flex: 1; min-width: 400px; background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .video-box h3 { margin-top: 0; color: #333; }
+        canvas { border: 2px solid #ddd; border-radius: 4px; width: 100%; height: auto; max-width: 500px; }
+        .controls { background: white; padding: 20px; border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; 
+        }
+        button { padding: 10px 20px; margin: 5px; font-size: 14px; cursor: pointer; background: #4CAF50;
+            color: white; border: none; border-radius: 4px; transition: background 0.3s;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { background: #cccccc; cursor: not-allowed; }
+        .signaling { margin-top: 20px; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; padding: 10px;
+            font-family: monospace; font-size: 12px; border: 1px solid #ddd; border-radius: 4px;
+        }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px;
+            background: #e7f3ff; border-left: 4px solid #2196F3;
+        }
+        .error { background: #ffebee; border-left-color: #f44336; }
+        .success { background: #e8f5e9; border-left-color: #4CAF50; }
+    </style>
+    
+    <script>
+        let localStream = null;
+        let peerConnection = null;
+        let localCanvas = null;
+        let remoteCanvas = null;
+        
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        function initVideoTexture(canvas, stream, canvasId) {
+            let intervalID;
+            const videoElement = document.createElement('video');
+            videoElement.autoplay = true;
+            videoElement.playsInline = true;
+            videoElement.muted = (canvasId === 'local'); // Only mute local video
+            videoElement.srcObject = stream;
+            
+            videoElement.addEventListener("canplaythrough", () => {
+                videoElement.play().catch(err => { 
+                    console.error("Error playing video:", err); 
+                    updateStatus(`Error playing ${canvasId} video: ${err.message}`, 'error');
+                });
+                if (intervalID) clearInterval(intervalID);
+                intervalID = setInterval(() => { 
+                    handleLoadedImage(canvas, videoElement, videoElement.videoWidth, videoElement.videoHeight); 
+                }, 15);
+            });
+            
+            videoElement.addEventListener("ended", () => { 
+                if (intervalID) clearInterval(intervalID); 
+            });
+            
+            // Store reference for cleanup
+            canvas.videoElement = videoElement;
+            canvas.intervalID = intervalID;
+        }
+
+        async function startLocalVideo() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                updateStatus("getUserMedia is not supported in this browser", 'error');
+                return;
+            }
+            
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 1280, height: 720 }, 
+                    audio: true 
+                });
+                
+                localCanvas = document.getElementById('localVideo');
+                initCanvasGL(localCanvas);
+                initVideoTexture(localCanvas, localStream, 'local');
+                
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('createOfferBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = false;
+                
+                updateStatus("Local camera started successfully", 'success');
+            } catch (error) {
+                updateStatus(`Failed to get local stream: ${error.message}`, 'error');
+                console.error("Error accessing media devices:", error);
+            }
+        }
+
+        async function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(configuration);
+            
+            // Add local stream tracks to peer connection
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
+            
+            // Handle incoming tracks
+            peerConnection.ontrack = (event) => {
+                console.log('Received remote track:', event.track.kind);
+                
+                if (!remoteCanvas) {
+                    remoteCanvas = document.getElementById('remoteVideo');
+                    initCanvasGL(remoteCanvas);
+                }
+                
+                initVideoTexture(remoteCanvas, event.streams[0], 'remote');
+                updateStatus("Remote stream received!", 'success');
+            };
+            
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log('New ICE candidate:', event.candidate);
+                    // In production, send this to the remote peer via signaling server
+                    // For now, we'll display it for manual exchange
+                    updateOfferDisplay();
+                }
+            };
+            
+            // Handle connection state changes
+            peerConnection.onconnectionstatechange = () => {
+                updateStatus(`Connection state: ${peerConnection.connectionState}`, 'status');
+                console.log('Connection state:', peerConnection.connectionState);
+            };
+            
+            peerConnection.oniceconnectionstatechange = () => {
+                updateStatus(`ICE connection state: ${peerConnection.iceConnectionState}`, 'status');
+                console.log('ICE connection state:', peerConnection.iceConnectionState);
+            };
+        }
+
+        async function createOffer() {
+            try {
+                await createPeerConnection();
+                
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                document.getElementById('offerText').value = JSON.stringify(peerConnection.localDescription, null, 2);
+                document.getElementById('createOfferBtn').disabled = true;
+                document.getElementById('answerSection').style.display = 'block';
+                
+                updateStatus("Offer created. Copy and send to remote peer.", 'success');live.html
+            } catch (error) {
+                updateStatus(`Error creating offer: ${error.message}`, 'error');
+                console.error("Error creating offer:", error);
+            }
+        }
+
+        async function handleAnswer() {
+            try {
+                const answerText = document.getElementById('answerText').value;
+                const answer = JSON.parse(answerText);
+                
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                
+                document.getElementById('submitAnswerBtn').disabled = true;
+                updateStatus("Answer received and processed!", 'success');
+            } catch (error) {
+                updateStatus(`Error handling answer: ${error.message}`, 'error');
+                console.error("Error handling answer:", error);
+            }
+        }
+
+        async function handleOffer() {
+            try {
+                const offerText = document.getElementById('receiveOfferText').value;
+                const offer = JSON.parse(offerText);
+                
+                await createPeerConnection();
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                document.getElementById('generatedAnswerText').value = JSON.stringify(peerConnection.localDescription, null, 2);
+                document.getElementById('receiveOfferBtn').disabled = true;
+                
+                updateStatus("Answer created. Copy and send back to the offerer.", 'success');
+            } catch (error) {
+                updateStatus(`Error handling offer: ${error.message}`, 'error');
+                console.error("Error handling offer:", error);
+            }
+        }
+
+        function updateOfferDisplay() {
+            if (peerConnection && peerConnection.localDescription) {
+                document.getElementById('offerText').value = JSON.stringify(peerConnection.localDescription, null, 2);
+            }
+        }
+
+        function stopVideo() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            // Clear canvases
+            if (localCanvas && localCanvas.intervalID) {
+                clearInterval(localCanvas.intervalID);
+            }
+            if (remoteCanvas && remoteCanvas.intervalID) {
+                clearInterval(remoteCanvas.intervalID);
+            }
+            
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('createOfferBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = true;
+            
+            updateStatus("Stopped all video streams", 'status');
+        }
+
+        function updateStatus(message, type = 'status') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+        }
+
+        function webGLStart() {
+            const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+            for (let canvas of canvasArray) {
+                addMouseEvents(canvas);
+            }
+
+            addEventHandlers(() => {
+                const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+                for (let canvas of canvasArray) {
+                    const gl = canvas.gl;
+                    if (gl) {
+                        gl.filterMode = (gl.filterMode + 1) % 4;
+                        const texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
+                        cubicFilter(gl, texture, canvas.width, canvas.height);
+                    }
+                }
+            });
+            
+            updateStatus("Ready. Click 'Start Local Camera' to begin.", 'status');
+        }
+        
+        window.addEventListener('DOMContentLoaded', webGLStart);
+    </script>        
+</head>
+
+<body>
+    <div class="container">
+        <h1>WebGL Cubic Interpolation with WebRTC</h1>
+        
+        <div class="controls">
+            <h2>Controls</h2>
+            <button id="startBtn" onclick="startLocalVideo()">Start Local Camera</button>
+            <button id="createOfferBtn" onclick="createOffer()" disabled>Create Offer (Caller)</button>
+            <button id="stopBtn" onclick="stopVideo()" disabled>Stop</button>
+            <div id="status" class="status">Initializing...</div>
+            <p><em>Press 'F' to toggle filter mode. Use mouse wheel to zoom, click and drag to pan.</em></p>
+        </div>
+        
+        <div class="video-container">
+            <div class="video-box">
+                <h3>Local Camera (You)</h3>
+                <canvas id="localVideo" class="gl.cubicinterpolation" width="640" height="480"></canvas>
+            </div>
+            
+            <div class="video-box">
+                <h3>Remote Peer</h3>
+                <canvas id="remoteVideo" class="gl.cubicinterpolation" width="640" height="480"></canvas>
+            </div>
+        </div>
+        
+        <div class="controls signaling">
+            <h2>Signaling (Manual Copy/Paste)</h2>
+            
+            <div id="offerSection">
+                <h3>Step 1 (Caller): Send this offer to remote peer</h3>
+                <textarea id="offerText" readonly placeholder="Offer will appear here..."></textarea>
+            </div>
+            
+            <div id="answerSection" style="display:none;">
+                <h3>Step 2 (Caller): Paste answer from remote peer</h3>
+                <textarea id="answerText" placeholder="Paste answer here..."></textarea>
+                <button id="submitAnswerBtn" onclick="handleAnswer()">Submit Answer</button>
+            </div>
+            
+            <hr style="margin: 30px 0;">
+            
+            <div id="receiveOfferSection">
+                <h3>Step 1 (Answerer): Paste offer from caller</h3>
+                <textarea id="receiveOfferText" placeholder="Paste offer here..."></textarea>
+                <button id="receiveOfferBtn" onclick="handleOffer()">Process Offer & Create Answer</button>
+            </div>
+            
+            <div id="generatedAnswerSection">
+                <h3>Step 2 (Answerer): Send this answer back to caller</h3>
+                <textarea id="generatedAnswerText" readonly placeholder="Answer will appear here..."></textarea>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <h2>Instructions</h2>
+            <ol>
+                <li>Open this page in two different browser windows or tabs (or on two different devices)</li>
+                <li>In both windows, click "Start Local Camera" and allow camera access</li>
+                <li><strong>In the first window (Caller):</strong> Click "Create Offer"</li>
+                <li>Copy the offer JSON and paste it into the second window's "Paste offer" field</li>
+                <li><strong>In the second window (Answerer):</strong> Click "Process Offer & Create Answer"</li>
+                <li>Copy the generated answer and paste it back into the first window's "Paste answer" field</li>
+                <li><strong>In the first window:</strong> Click "Submit Answer"</li>
+                <li>Wait a few seconds for the connection to establish</li>
+                <li>You should now see both local and remote video streams with WebGL cubic interpolation!</li>
+            </ol>
+            <p><strong>Note:</strong> This uses manual signaling for simplicity. In production, you would use a signaling server (WebSocket, etc.) to exchange offers/answers automatically.</p>
+        </div>
+    </div>
+</body>
+    
+</html>
