@@ -64,7 +64,7 @@
         let remotePeerName = '';
         let chatEnabled = false;
         
-        const SIGNALING_SERVER = 'ws://localhost:8080';
+        const SIGNALING_SERVER = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:${window.location.port}/ws`;
         
         const configuration = {
             iceServers: [

@@ -135,7 +135,7 @@ async def serve_file(filename: str):
         return PlainTextResponse("Internal server error", status_code=500)
 
 
-@app.websocket("/")
+@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     client_id = None
     room_id = None
