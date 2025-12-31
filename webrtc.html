@@ -34,6 +34,10 @@
         }
         .error { background: #ffebee; border-left-color: #f44336; }
         .success { background: #e8f5e9; border-left-color: #4CAF50; }
+        input[type="text"] { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .input-group { margin: 10px 0; }
+        .input-group label { display: inline-block; width: 120px; font-weight: bold; }
+        .peer-info { font-size: 12px; color: #666; margin-top: 5px; }
     </style>
     
     <script>
@@ -43,7 +47,10 @@
         let remoteCanvas = null;
         let signalingSocket = null;
         let myClientId = null;
+        let myName = '';
+        let roomId = '';
         let remotePeerId = null;
+        let remotePeerName = '';
         
         const SIGNALING_SERVER = 'ws://localhost:8080';
         
@@ -55,6 +62,14 @@
         };
 
         function connectToSignalingServer() {
+            myName = document.getElementById('userName').value.trim() || `User-${Date.now() % 10000}`;
+            roomId = document.getElementById('roomId').value.trim();
+            
+            if (!roomId) {
+                updateStatus('Please enter a Call ID', 'error');
+                return;
+            }
+            
             updateStatus('Connecting to signaling server...', 'status');
             
             try {
@@ -62,6 +77,12 @@
                 
                 signalingSocket.onopen = () => {
                     updateStatus('Connected to signaling server', 'success');
+                    // Send initial message with peer name and room ID
+                    sendSignalingMessage({
+                        type: 'register',
+                        peerName: myName,
+                        roomId: roomId
+                    });
                     document.getElementById('connectBtn').disabled = true;
                     document.getElementById('startBtn').disabled = false;
                     document.getElementById('disconnectBtn').disabled = false;
@@ -108,19 +129,24 @@
             switch (message.type) {
                 case 'welcome':
                     myClientId = message.clientId;
-                    updateStatus(`Connected as Client ${myClientId}. Total peers: ${message.totalClients - 1}`, 'success');
-                    addLogMessage(`You are Client ${myClientId}`);
+                    const peersInRoom = message.peersInRoom || (message.totalClients - 1);
+                    updateStatus(`Connected as "${myName}" (Client ${myClientId}) in room "${roomId}". Peers in room: ${peersInRoom}`, 'success');
+                    addLogMessage(`You are "${myName}" (Client ${myClientId}) in room "${roomId}"`);
+                    document.getElementById('localPeerInfo').textContent = `${myName} (ID: ${myClientId}) - Room: ${roomId}`;
                     break;
                     
                 case 'peer-connected':
                     if (message.clientId !== myClientId) {
-                        addLogMessage(`Peer ${message.clientId} connected. Total peers: ${message.totalClients - 1}`);
-                        updateStatus(`Peer ${message.clientId} available. Ready to call.`, 'success');
+                        const peerName = message.peerName || `Peer-${message.clientId}`;
+                        const peersInRoom = message.peersInRoom || message.totalClients;
+                        addLogMessage(`"${peerName}" (Client ${message.clientId}) joined room "${roomId}". Peers in room: ${peersInRoom}`);
+                        updateStatus(`"${peerName}" available in room. Ready to call.`, 'success');
                         
                         // If we have local stream and no existing connection, automatically call
                         if (localStream && !peerConnection) {
                             setTimeout(() => {
                                 remotePeerId = message.clientId;
+                                remotePeerName = peerName;
                                 createAndSendOffer(message.clientId);
                             }, 1000);
                         }
@@ -130,21 +156,27 @@
                 case 'peer-disconnected':
                     addLogMessage(`Peer ${message.clientId} disconnected`);
                     if (remotePeerId === message.clientId) {
-                        updateStatus('Remote peer disconnected', 'error');
+                        updateStatus(`"${remotePeerName}" disconnected`, 'error');
+                        document.getElementById('remotePeerInfo').textContent = 'Not connected';
                         if (peerConnection) {
                             peerConnection.close();
                             peerConnection = null;
                         }
+                        remotePeerName = '';
                     }
                     break;
                     
                 case 'offer':
-                    addLogMessage(`Received offer from Client ${message.senderId}`);
-                    await handleOffer(message.offer, message.senderId);
+                    remotePeerName = message.peerName || `Peer-${message.senderId}`;
+                    addLogMessage(`Received offer from "${remotePeerName}" (Client ${message.senderId})`);
+                    await handleOffer(message.offer, message.senderId, remotePeerName);
                     break;
                     
                 case 'answer':
-                    addLogMessage(`Received answer from Client ${message.senderId}`);
+                    if (message.peerName) {
+                        remotePeerName = message.peerName;
+                    }
+                    addLogMessage(`Received answer from "${remotePeerName}" (Client ${message.senderId})`);
                     await handleAnswer(message.answer);
                     break;
                     
@@ -251,7 +283,8 @@
                     sendSignalingMessage({
                         type: 'ice-candidate',
                         candidate: event.candidate,
-                        targetId: remotePeerId
+                        targetId: remotePeerId,
+                        roomId: roomId
                     });
                 }
             };
@@ -279,11 +312,13 @@
                 sendSignalingMessage({
                     type: 'offer',
                     offer: offer,
-                    targetId: targetId
+                    targetId: targetId,
+                    peerName: myName,
+                    roomId: roomId
                 });
                 
                 addLogMessage(`Sent offer to Client ${targetId}`);
-                updateStatus(`Calling Client ${targetId}...`, 'status');
+                updateStatus(`Calling "${remotePeerName}"...`, 'status');
             } catch (error) {
                 updateStatus(`Error creating offer: ${error.message}`, 'error');
                 console.error("Error creating offer:", error);
@@ -293,20 +328,22 @@
         async function handleAnswer(answer) {
             try {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                updateStatus("Connected to remote peer!", 'success');
-                addLogMessage('Connection established');
+                updateStatus(`Connected to "${remotePeerName}"!`, 'success');
+                addLogMessage(`Connection established with "${remotePeerName}"`);
+                document.getElementById('remotePeerInfo').textContent = `${remotePeerName} (ID: ${remotePeerId})`;
             } catch (error) {
                 updateStatus(`Error handling answer: ${error.message}`, 'error');
                 console.error("Error handling answer:", error);
             }
         }
 
-        async function handleOffer(offer, senderId) {
+        async function handleOffer(offer, senderId, peerName) {
             try {
                 remotePeerId = senderId;
+                remotePeerName = peerName || `Peer-${senderId}`;
                 
                 if (!localStream) {
-                    updateStatus('Received call but camera not started. Starting camera...', 'status');
+                    updateStatus(`Received call from "${remotePeerName}" but camera not started. Starting camera...`, 'status');
                     await startLocalVideo();
                 }
                 
@@ -319,11 +356,14 @@
                 sendSignalingMessage({
                     type: 'answer',
                     answer: answer,
-                    targetId: senderId
+                    targetId: senderId,
+                    peerName: myName,
+                    roomId: roomId
                 });
                 
-                addLogMessage(`Answered call from Client ${senderId}`);
-                updateStatus(`Answering call from Client ${senderId}...`, 'status');
+                addLogMessage(`Answered call from "${remotePeerName}"`);
+                updateStatus(`Answering call from "${remotePeerName}"...`, 'status');
+                document.getElementById('remotePeerInfo').textContent = `${remotePeerName} (ID: ${remotePeerId})`;
             } catch (error) {
                 updateStatus(`Error handling offer: ${error.message}`, 'error');
                 console.error("Error handling offer:", error);
@@ -404,6 +444,14 @@
         
         <div class="controls">
             <h2>Controls</h2>
+            <div class="input-group">
+                <label for="userName">Your Name:</label>
+                <input type="text" id="userName" placeholder="Enter your name" />
+            </div>
+            <div class="input-group">
+                <label for="roomId">Call ID / Room:</label>
+                <input type="text" id="roomId" placeholder="Enter room ID (e.g., meeting123)" />
+            </div>
             <button id="connectBtn" onclick="connectToSignalingServer()">Connect to Server</button>
             <button id="startBtn" onclick="startLocalVideo()" disabled>Start Local Camera</button>
             <button id="stopBtn" onclick="stopVideo()" disabled>Stop Video</button>
@@ -415,11 +463,13 @@
         <div class="video-container">
             <div class="video-box">
                 <h3>Local Camera (You)</h3>
+                <div class="peer-info" id="localPeerInfo">Not connected</div>
                 <canvas id="localVideo" class="gl.cubicinterpolation" width="640" height="480"></canvas>
             </div>
             
             <div class="video-box">
                 <h3>Remote Peer</h3>
+                <div class="peer-info" id="remotePeerInfo">Not connected</div>
                 <canvas id="remoteVideo" class="gl.cubicinterpolation" width="640" height="480"></canvas>
             </div>
         </div>
@@ -432,14 +482,16 @@
         <div class="controls">
             <h2>Instructions</h2>
             <ol>
-                <li><strong>Start the signaling server:</strong> Run <code>node signaling-server.js</code> in the project directory</li>
+                <li><strong>Start the signaling server:</strong> Run <code>python3 webrtc-signaling-server.py</code> in the project directory</li>
                 <li>Open this page in two browser windows or tabs (same computer or different devices on same network)</li>
+                <li><strong>Enter the same Call ID/Room in both windows</strong> (e.g., "meeting123") - only peers with matching IDs will connect</li>
+                <li>Optionally enter your name for identification</li>
                 <li>In both windows, click "Connect to Server"</li>
                 <li>In both windows, click "Start Local Camera" and allow camera access</li>
-                <li>The peers will automatically connect via WebSocket signaling!</li>
+                <li>The peers in the same room will automatically connect via WebSocket signaling!</li>
                 <li>You should see both local and remote video streams with WebGL cubic interpolation</li>
             </ol>
-            <p><strong>Note:</strong> Make sure the signaling server is running on <code>ws://localhost:8080</code>. If using different devices, update the SIGNALING_SERVER constant in the code to use the server's IP address.</p>
+            <p><strong>Note:</strong> Only users who enter the same Call ID will be able to see and connect to each other. This allows multiple independent calls on the same server.</p>
         </div>
     </div>
 </body>
