@@ -78,6 +78,9 @@ function createVideoCanvas(canvasId, title, peerInfo) {
     // Add mouse events for the new canvas
     addMouseEvents(canvas);
     
+    // Rebalance grid layout
+    rebalanceVideoGrid();
+    
     return { canvas, container };
 }
 
@@ -94,7 +97,42 @@ function removeVideoCanvas(canvasId) {
         }
         // Remove from tracking
         delete canvases[canvasId];
+        // Rebalance grid
+        rebalanceVideoGrid();
     }
+}
+
+function rebalanceVideoGrid() {
+    const videoGrid = document.getElementById('videoGrid');
+    const numCanvases = Object.keys(canvases).length;
+    
+    if (numCanvases === 0) {
+        return;
+    }
+    
+    // Adjust grid columns based on number of canvases
+    if (numCanvases === 1) {
+        videoGrid.style.gridTemplateColumns = '1fr';
+    } else if (numCanvases === 2) {
+        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    } else if (numCanvases <= 4) {
+        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    } else if (numCanvases <= 6) {
+        videoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    } else {
+        videoGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(300px, 1fr))';
+    }
+    
+    // Adjust canvas display size to maintain aspect ratio
+    Object.keys(canvases).forEach(canvasId => {
+        const canvas = canvases[canvasId].canvas;
+        // Force redraw with new container size
+        if (canvas.gl) {
+            const rect = canvas.getBoundingClientRect();
+            canvas.style.width = '100%';
+            canvas.style.height = 'auto';
+        }
+    });
 }
 
 function connectToSignalingServer() {
