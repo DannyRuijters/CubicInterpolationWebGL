@@ -110,18 +110,16 @@ function rebalanceVideoGrid() {
         return;
     }
     
-    // Always arrange canvases in a single row (side by side)
-    videoGrid.style.gridTemplateColumns = `repeat(${numCanvases}, 1fr)`;
-    
-    // Adjust canvas display size to maintain aspect ratio
+    // Ensure video boxes are equal width in flexbox layout
     Object.keys(canvases).forEach(canvasId => {
+        const container = canvases[canvasId].container;
         const canvas = canvases[canvasId].canvas;
-        // Force redraw with new container size
-        if (canvas.gl) {
-            const rect = canvas.getBoundingClientRect();
-            canvas.style.width = '100%';
-            canvas.style.height = 'auto';
-        }
+        // Set equal flex basis for all containers
+        container.style.flex = `1 1 ${100 / numCanvases}%`;
+        container.style.minWidth = '300px';
+        // Force canvas to fill container
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
     });
 }
 
