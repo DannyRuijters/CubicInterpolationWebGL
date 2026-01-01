@@ -109,7 +109,22 @@ function disconnectFromServer() {
     if (signalingSocket) {
         signalingSocket.close();
     }
-    stopVideo();
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    
+    // Clear remote canvas only
+    if (remoteCanvas && remoteCanvas.intervalID) {
+        clearInterval(remoteCanvas.intervalID);
+    }
+    
+    remotePeerId = null;
+    remotePeerName = '';
+    document.getElementById('remotePeerInfo').textContent = 'Not connected';
+    
+    updateStatus("Disconnected from server (local video still active)", 'status');
+    addLogMessage('Disconnected from server');
 }
 
 async function handleSignalingMessage(message) {
@@ -362,31 +377,6 @@ async function handleOffer(offer, senderId, peerName) {
         updateStatus(`Error handling offer: ${error.message}`, 'error');
         console.error("Error handling offer:", error);
     }
-}
-
-function stopVideo() {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    
-    // Clear canvases
-    if (localCanvas && localCanvas.intervalID) {
-        clearInterval(localCanvas.intervalID);
-    }
-    if (remoteCanvas && remoteCanvas.intervalID) {
-        clearInterval(remoteCanvas.intervalID);
-    }
-    
-    remotePeerId = null;
-    
-    updateStatus("Stopped all video streams", 'status');
-    addLogMessage('Video stopped');
 }
 
 function addLogMessage(message) {
