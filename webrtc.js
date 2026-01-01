@@ -1,13 +1,11 @@
 let localStream = null;
-let peerConnection = null;
-let localCanvas = null;
-let remoteCanvas = null;
+let peerConnections = {}; // Map of peerId -> RTCPeerConnection
+let canvases = {}; // Map of peerId -> canvas element
 let signalingSocket = null;
 let myClientId = null;
 let myName = '';
 let roomId = '';
-let remotePeerId = null;
-let remotePeerName = '';
+let peers = {}; // Map of peerId -> {name: string, stream: MediaStream}
 let chatEnabled = false;
 
 const SIGNALING_SERVER = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:${window.location.port}/ws`;
@@ -109,7 +107,13 @@ function disconnectFromServer() {
     if (signalingSocket) {
         signalingSocket.close();
     }
-    stopVideo();
+    
+    // Close all peer connections but keep local camera running
+    Object.values(peerConnections).forEach(pc => pc.close());
+    peerConnections = {};
+    peers = {};
+    
+    updateVideoGrid();
 }
 
 async function handleSignalingMessage(message) {
@@ -121,10 +125,10 @@ async function handleSignalingMessage(message) {
             const peersInRoom = message.peersInRoom || (message.totalClients - 1);
             updateStatus(`Connected as "${myName}" (Client ${myClientId}) in room "${roomId}". Peers in room: ${peersInRoom}`, 'success');
             addLogMessage(`You are "${myName}" (Client ${myClientId}) in room "${roomId}"`);
-            document.getElementById('localPeerInfo').textContent = `${myName} (ID: ${myClientId}) - Room: ${roomId}`;
             chatEnabled = true;
             document.getElementById('chatInput').disabled = false;
             document.getElementById('sendChatBtn').disabled = false;
+            updateVideoGrid();
             break;
             
         case 'peer-connected':
@@ -134,12 +138,12 @@ async function handleSignalingMessage(message) {
                 addLogMessage(`"${peerName}" (Client ${message.clientId}) joined room "${roomId}". Peers in room: ${peersInRoom}`);
                 updateStatus(`"${peerName}" available in room. Ready to call.`, 'success');
                 
+                peers[message.clientId] = { name: peerName, stream: null };
+                
                 // If we have local stream and no existing connection, automatically call
-                if (localStream && !peerConnection) {
+                if (localStream && !peerConnections[message.clientId]) {
                     setTimeout(() => {
-                        remotePeerId = message.clientId;
-                        remotePeerName = peerName;
-                        createAndSendOffer(message.clientId);
+                        createAndSendOffer(message.clientId, peerName);
                     }, 1000);
                 }
             }
@@ -147,34 +151,32 @@ async function handleSignalingMessage(message) {
             
         case 'peer-disconnected':
             addLogMessage(`Peer ${message.clientId} disconnected`);
-            if (remotePeerId === message.clientId) {
-                updateStatus(`"${remotePeerName}" disconnected`, 'error');
-                document.getElementById('remotePeerInfo').textContent = 'Not connected';
-                if (peerConnection) {
-                    peerConnection.close();
-                    peerConnection = null;
+            if (peers[message.clientId]) {
+                updateStatus(`"${peers[message.clientId].name}" disconnected`, 'error');
+                if (peerConnections[message.clientId]) {
+                    peerConnections[message.clientId].close();
+                    delete peerConnections[message.clientId];
                 }
-                remotePeerName = '';
+                delete peers[message.clientId];
+                updateVideoGrid();
             }
             break;
             
         case 'offer':
-            remotePeerName = message.peerName || `Peer-${message.senderId}`;
-            addLogMessage(`Received offer from "${remotePeerName}" (Client ${message.senderId})`);
-            await handleOffer(message.offer, message.senderId, remotePeerName);
+            const peerName = message.peerName || `Peer-${message.senderId}`;
+            peers[message.senderId] = { name: peerName, stream: null };
+            addLogMessage(`Received offer from "${peerName}" (Client ${message.senderId})`);
+            await handleOffer(message.offer, message.senderId, peerName);
             break;
             
         case 'answer':
-            if (message.peerName) {
-                remotePeerName = message.peerName;
-            }
-            addLogMessage(`Received answer from "${remotePeerName}" (Client ${message.senderId})`);
-            await handleAnswer(message.answer);
+            addLogMessage(`Received answer from "${peers[message.senderId]?.name || message.senderId}" (Client ${message.senderId})`);
+            await handleAnswer(message.answer, message.senderId);
             break;
             
         case 'ice-candidate':
-            if (message.candidate && peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+            if (message.candidate && peerConnections[message.senderId]) {
+                await peerConnections[message.senderId].addIceCandidate(new RTCIceCandidate(message.candidate));
                 console.log('Added ICE candidate from remote peer');
             }
             break;
@@ -235,10 +237,7 @@ async function startLocalVideo() {
             audio: true 
         });
         
-        localCanvas = document.getElementById('localVideo');
-        initCanvasGL(localCanvas);
-        initVideoTexture(localCanvas, localStream, 'local');
-        
+        updateVideoGrid();
         updateStatus("Local camera started. Waiting for peer...", 'success');
         addLogMessage('Local camera started');
     } catch (error) {
@@ -247,61 +246,60 @@ async function startLocalVideo() {
     }
 }
 
-async function createPeerConnection() {
-    peerConnection = new RTCPeerConnection(configuration);
+async function createPeerConnection(peerId) {
+    const pc = new RTCPeerConnection(configuration);
     
     // Add local stream tracks to peer connection
     if (localStream) {
         localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
+            pc.addTrack(track, localStream);
         });
     }
     
     // Handle incoming tracks
-    peerConnection.ontrack = (event) => {
-        console.log('Received remote track:', event.track.kind);
+    pc.ontrack = (event) => {
+        console.log('Received remote track from peer', peerId, ':', event.track.kind);
         
-        if (!remoteCanvas) {
-            remoteCanvas = document.getElementById('remoteVideo');
-            initCanvasGL(remoteCanvas);
+        if (peers[peerId]) {
+            peers[peerId].stream = event.streams[0];
+            updateVideoGrid();
+            updateStatus("Remote stream received!", 'success');
         }
-        
-        initVideoTexture(remoteCanvas, event.streams[0], 'remote');
-        updateStatus("Remote stream received!", 'success');
     };
     
     // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
+    pc.onicecandidate = (event) => {
         if (event.candidate) {
-            console.log('Sending ICE candidate to remote peer');
+            console.log('Sending ICE candidate to peer', peerId);
             sendSignalingMessage({
                 type: 'ice-candidate',
                 candidate: event.candidate,
-                targetId: remotePeerId,
+                targetId: peerId,
                 roomId: roomId
             });
         }
     };
     
     // Handle connection state changes
-    peerConnection.onconnectionstatechange = () => {
-        updateStatus(`Connection state: ${peerConnection.connectionState}`, 'status');
-        console.log('Connection state:', peerConnection.connectionState);
+    pc.onconnectionstatechange = () => {
+        updateStatus(`Connection state with ${peers[peerId]?.name || peerId}: ${pc.connectionState}`, 'status');
+        console.log('Connection state:', pc.connectionState);
     };
     
-    peerConnection.oniceconnectionstatechange = () => {
-        updateStatus(`ICE connection state: ${peerConnection.iceConnectionState}`, 'status');
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
+    pc.oniceconnectionstatechange = () => {
+        console.log('ICE connection state with', peerId, ':', pc.iceConnectionState);
     };
+    
+    peerConnections[peerId] = pc;
+    return pc;
 }
 
-async function createAndSendOffer(targetId) {
+async function createAndSendOffer(targetId, peerName) {
     try {
-        remotePeerId = targetId;
-        await createPeerConnection();
+        const pc = await createPeerConnection(targetId);
         
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
         
         sendSignalingMessage({
             type: 'offer',
@@ -312,19 +310,24 @@ async function createAndSendOffer(targetId) {
         });
         
         addLogMessage(`Sent offer to Client ${targetId}`);
-        updateStatus(`Calling "${remotePeerName}"...`, 'status');
+        updateStatus(`Calling "${peerName}"...`, 'status');
     } catch (error) {
         updateStatus(`Error creating offer: ${error.message}`, 'error');
         console.error("Error creating offer:", error);
     }
 }
 
-async function handleAnswer(answer) {
+async function handleAnswer(answer, senderId) {
     try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        updateStatus(`Connected to "${remotePeerName}"!`, 'success');
-        addLogMessage(`Connection established with "${remotePeerName}"`);
-        document.getElementById('remotePeerInfo').textContent = `${remotePeerName} (ID: ${remotePeerId})`;
+        const pc = peerConnections[senderId];
+        if (!pc) {
+            console.error('No peer connection found for', senderId);
+            return;
+        }
+        
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        updateStatus(`Connected to "${peers[senderId]?.name || senderId}"!`, 'success');
+        addLogMessage(`Connection established with "${peers[senderId]?.name || senderId}"`);
     } catch (error) {
         updateStatus(`Error handling answer: ${error.message}`, 'error');
         console.error("Error handling answer:", error);
@@ -333,19 +336,16 @@ async function handleAnswer(answer) {
 
 async function handleOffer(offer, senderId, peerName) {
     try {
-        remotePeerId = senderId;
-        remotePeerName = peerName || `Peer-${senderId}`;
-        
         if (!localStream) {
-            updateStatus(`Received call from "${remotePeerName}" but camera not started. Starting camera...`, 'status');
+            updateStatus(`Received call from "${peerName}" but camera not started. Starting camera...`, 'status');
             await startLocalVideo();
         }
         
-        await createPeerConnection();
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const pc = await createPeerConnection(senderId);
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
         
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
         
         sendSignalingMessage({
             type: 'answer',
@@ -355,38 +355,12 @@ async function handleOffer(offer, senderId, peerName) {
             roomId: roomId
         });
         
-        addLogMessage(`Answered call from "${remotePeerName}"`);
-        updateStatus(`Answering call from "${remotePeerName}"...`, 'status');
-        document.getElementById('remotePeerInfo').textContent = `${remotePeerName} (ID: ${remotePeerId})`;
+        addLogMessage(`Answered call from "${peerName}"`);
+        updateStatus(`Answering call from "${peerName}"...`, 'status');
     } catch (error) {
         updateStatus(`Error handling offer: ${error.message}`, 'error');
         console.error("Error handling offer:", error);
     }
-}
-
-function stopVideo() {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    
-    // Clear canvases
-    if (localCanvas && localCanvas.intervalID) {
-        clearInterval(localCanvas.intervalID);
-    }
-    if (remoteCanvas && remoteCanvas.intervalID) {
-        clearInterval(remoteCanvas.intervalID);
-    }
-    
-    remotePeerId = null;
-    
-    updateStatus("Stopped all video streams", 'status');
-    addLogMessage('Video stopped');
 }
 
 function addLogMessage(message) {
@@ -396,6 +370,85 @@ function addLogMessage(message) {
     logEntry.textContent = `[${timestamp}] ${message}`;
     logDiv.appendChild(logEntry);
     logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function updateVideoGrid() {
+    const grid = document.getElementById('videoGrid');
+    if (!grid) return;
+    
+    // Clear existing grid
+    grid.innerHTML = '';
+    
+    // Clear old canvas intervals
+    Object.values(canvases).forEach(canvas => {
+        if (canvas && canvas.intervalID) {
+            clearInterval(canvas.intervalID);
+        }
+    });
+    canvases = {};
+    
+    // Collect all participants (self + peers)
+    const participants = [];
+    
+    // Add self if we have a stream
+    if (localStream && myClientId) {
+        participants.push({
+            id: myClientId,
+            name: `${myName} (You)`,
+            stream: localStream,
+            isSelf: true
+        });
+    }
+    
+    // Add all peers
+    Object.entries(peers).forEach(([peerId, peer]) => {
+        if (peer.stream) {
+            participants.push({
+                id: peerId,
+                name: peer.name,
+                stream: peer.stream,
+                isSelf: false
+            });
+        }
+    });
+    
+    // If no participants, show placeholder
+    if (participants.length === 0) {
+        grid.innerHTML = '<div class=\"video-slot solo\"><p style=\"text-align: center; padding: 50px;\">Waiting for camera...</p></div>';
+        return;
+    }
+    
+    // Create video slots for each participant
+    participants.forEach((participant, index) => {
+        const slot = document.createElement('div');
+        slot.className = 'video-slot';
+        
+        // If only one participant (solo), make it full width
+        if (participants.length === 1) {
+            slot.classList.add('solo');
+        }
+        
+        // Create canvas for video
+        const canvas = document.createElement('canvas');
+        canvas.className = 'gl.cubicinterpolation';
+        canvas.width = 640;
+        canvas.height = 480;
+        canvas.id = `video-${participant.id}`;\n        
+        // Create overlay with peer name
+        const overlay = document.createElement('div');
+        overlay.className = 'peer-overlay';
+        overlay.textContent = participant.name;
+        
+        slot.appendChild(canvas);
+        slot.appendChild(overlay);
+        grid.appendChild(slot);
+        
+        // Initialize WebGL and video texture
+        initCanvasGL(canvas);
+        initVideoTexture(canvas, participant.stream, participant.isSelf ? 'local' : `remote-${participant.id}`);
+        
+        canvases[participant.id] = canvas;
+    });
 }
 
 function sendChatMessage() {

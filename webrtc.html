@@ -31,18 +31,8 @@
             <p><em>Press 'F' to toggle filter mode. Use mouse wheel to zoom, click and drag to pan.</em></p>
         </div>
         
-        <div class="video-container">
-            <div class="video-box">
-                <h3>Local Camera (You)</h3>
-                <div class="peer-info" id="localPeerInfo">Not connected</div>
-                <canvas id="localVideo" class="gl.cubicinterpolation" width="640" height="480"></canvas>
-            </div>
-            
-            <div class="video-box">
-                <h3>Remote Peer</h3>
-                <div class="peer-info" id="remotePeerInfo">Not connected</div>
-                <canvas id="remoteVideo" class="gl.cubicinterpolation" width="640" height="480"></canvas>
-            </div>
+        <div id="videoGrid" class="video-grid">
+            <!-- Video slots will be dynamically created here -->
         </div>
         
         <div class="chat-container">
