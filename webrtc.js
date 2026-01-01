@@ -391,10 +391,10 @@ function updateVideoGrid() {
     const participants = [];
     
     // Add self if we have a stream
-    if (localStream && myClientId) {
+    if (localStream) {
         participants.push({
-            id: myClientId,
-            name: `${myName} (You)`,
+            id: myClientId || 'local',
+            name: myName ? `${myName} (You)` : 'You',
             stream: localStream,
             isSelf: true
         });
