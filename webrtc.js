@@ -620,19 +620,19 @@ function loadCredentialsFromCookies() {
 }
 
 function webGLStart() {
-    // Event handlers will be added dynamically as canvases are created
-    addEventHandlers(() => {
-        // Apply filter to all existing canvases
-        Object.keys(canvases).forEach(canvasId => {
-            const canvas = canvases[canvasId].canvas;
-            const gl = canvas.gl;
-            if (gl) {
-                gl.filterMode = (gl.filterMode + 1) % 4;
-                const texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
-                cubicFilter(gl, texture, canvas.width, canvas.height);
-            }
-        });
-    });
+    // // Event handlers will be added dynamically as canvases are created
+    // addEventHandlers(() => {
+    //     // Apply filter to all existing canvases
+    //     Object.keys(canvases).forEach(canvasId => {
+    //         const canvas = canvases[canvasId].canvas;
+    //         const gl = canvas.gl;
+    //         if (gl) {
+    //             gl.filterMode = (gl.filterMode + 1) % 4;
+    //             const texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
+    //             cubicFilter(gl, texture, canvas.width, canvas.height);
+    //         }
+    //     });
+    // });
     
     // Load saved credentials from cookies
     loadCredentialsFromCookies();
