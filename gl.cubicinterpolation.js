@@ -326,8 +326,8 @@ function cubicFilter(gl, texture, width, height) {
     // Calculate aspect ratio correction
     const textureAspect = texture.width / texture.height;
     const canvasAspect = width / height;
-    const scaleX = (canvasAspect > textureAspect) ? 1.0 : (textureAspect / canvasAspect);
-    const scaleY = (canvasAspect > textureAspect) ? (canvasAspect / textureAspect) : 1.0;
+    const scaleX = (canvasAspect > textureAspect) ? 1.0 : (canvasAspect /textureAspect);
+    const scaleY = (canvasAspect > textureAspect) ? (textureAspect / canvasAspect) : 1.0;
     const matrix = [cos * scaleX, -sin, 0, sin, cos * scaleY, 0, gl.translateX, gl.translateY, 1];
     gl.uniformMatrix3fv(program.matrixUniform, false, matrix);
 
