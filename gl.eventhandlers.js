@@ -39,6 +39,7 @@ function handleMouseWheel(event) {
     const canvas = event.target;
     const gl = canvas.gl;
     gl.zoom -= 0.1 * delta;
+    if (gl.zoom < 0.001) gl.zoom = 0.001;  //prevent negative or zero zoom
     const texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
     cubicFilter(gl, texture, canvas.width, canvas.height);
     event.preventDefault();
