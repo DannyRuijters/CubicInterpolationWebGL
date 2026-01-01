@@ -372,7 +372,7 @@ async function startLocalVideo() {
         }
         
         const localCanvas = canvases['localVideo'].canvas;
-        initCanvasGL(localCanvas);
+        initCanvasGL(localCanvas).filterMode = 2;  // use linear interpolation
         initVideoTexture(localCanvas, localStream, 'local');
         
         updateStatus("Local camera started. Waiting for peer...", 'success');
@@ -406,7 +406,7 @@ async function createPeerConnection(peerId, peerName) {
         }
         
         const remoteCanvas = canvases[canvasId].canvas;
-        initCanvasGL(remoteCanvas);
+        initCanvasGL(remoteCanvas).filterMode = 2;  // use linear interpolation
         initVideoTexture(remoteCanvas, event.streams[0], canvasId);
         updateStatus(`Remote stream received from "${peerName}"!`, 'success');
     };
