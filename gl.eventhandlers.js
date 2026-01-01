@@ -34,7 +34,7 @@ function handleMouseMove(event) {
 
 function handleMouseWheel(event) {
     // cross-browser wheel delta
-    let event = window.event || event; // old IE support
+    event = window.event || event; // old IE support
     const delta = Math.max(-1, Math.min(1, (event.wheelDelta || -event.detail)));
     const canvas = event.target;
     const gl = canvas.gl;
