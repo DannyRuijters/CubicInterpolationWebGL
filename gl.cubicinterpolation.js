@@ -336,7 +336,7 @@ function cubicFilter(gl, texture, width, height) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, (gl.filterMode == 3) ? gl.NEAREST : gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, (gl.filterMode == 3) ? gl.NEAREST : gl.LINEAR);
 
-    drawTexture(gl, gl.shaderCubic);
+    drawTexture(gl, program);
 }
 
 function handleLoadedImage(canvas, image, width, height) {
