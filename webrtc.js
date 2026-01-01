@@ -69,7 +69,7 @@ function createVideoCanvas(canvasId, title, peerInfo) {
     canvas.id = canvasId;
     canvas.className = 'gl.cubicinterpolation';
     canvas.width = 640;
-    canvas.height = 480;
+    canvas.height = 640;
     container.appendChild(canvas);
     
     // Add to grid
@@ -117,9 +117,10 @@ function rebalanceVideoGrid() {
         // Set equal flex basis for all containers
         container.style.flex = `1 1 ${100 / numCanvases}%`;
         container.style.minWidth = '300px';
-        // Force canvas to fill container
+        container.style.maxWidth = `${100 / numCanvases}%`;
+        // Force canvas to be square
         canvas.style.width = '100%';
-        canvas.style.height = 'auto';
+        canvas.style.aspectRatio = '1 / 1';
     });
 }
 

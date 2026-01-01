@@ -5,7 +5,7 @@ body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
     box-shadow: 0 2px 8px rgba(0,0,0,0.1); flex: 1; min-width: 300px;
 }
 .video-box h3 { margin-top: 0; color: #333; }
-canvas { border: 2px solid #ddd; border-radius: 4px; width: 100%; height: auto; display: block; }
+canvas { border: 2px solid #ddd; border-radius: 4px; width: 100%; aspect-ratio: 1 / 1; display: block; object-fit: cover; }
 .controls { background: white; padding: 20px; border-radius: 8px; 
     box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; 
 }
