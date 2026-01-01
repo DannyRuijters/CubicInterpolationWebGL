@@ -320,7 +320,7 @@ function cubicFilter(gl, texture, width, height) {
     gl.viewport(0, 0, width, height);
     const program = (gl.filterMode < 2) ? gl.shaderCubic : gl.shaderSimple;
     gl.useProgram(program);
-    gl.uniform2f(gl.shaderCubic.nrOfPixelsUniform, texture.width, texture.height);
+    if (program == gl.shaderCubic) gl.uniform2f(gl.shaderCubic.nrOfPixelsUniform, texture.width, texture.height);
     const cos = Math.cos(gl.rotateAngle) * gl.zoom;
     const sin = Math.sin(gl.rotateAngle);
     // Calculate aspect ratio correction
