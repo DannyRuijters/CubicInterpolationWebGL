@@ -74,8 +74,8 @@ function createVideoCanvas(canvasId, title, peerInfo) {
     // Add to grid
     videoGrid.appendChild(container);
     
-    // Add mouse events for the new canvas
-    addMouseEvents(canvas);
+    // // Add mouse events for the new canvas
+    // addMouseEvents(canvas);
     
     // Rebalance grid layout
     rebalanceVideoGrid();
