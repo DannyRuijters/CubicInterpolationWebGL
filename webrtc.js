@@ -110,17 +110,29 @@ function rebalanceVideoGrid() {
         return;
     }
     
-    // Ensure video boxes are equal width in flexbox layout
+    // Calculate maximum size based on viewport
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const maxCanvasWidth = Math.floor((viewportWidth - 100) / numCanvases); // Account for padding/margins
+    const maxCanvasHeight = viewportHeight - 300; // Account for controls and other UI
+    const maxSize = Math.min(maxCanvasWidth, maxCanvasHeight);
+    
+    // Set all canvases to exactly the same size
     Object.keys(canvases).forEach(canvasId => {
         const container = canvases[canvasId].container;
         const canvas = canvases[canvasId].canvas;
         // Set equal flex basis for all containers
-        container.style.flex = `1 1 ${100 / numCanvases}%`;
-        container.style.minWidth = '300px';
-        container.style.maxWidth = `${100 / numCanvases}%`;
-        // Force canvas to be square
-        canvas.style.width = '100%';
-        canvas.style.aspectRatio = '1 / 1';
+        container.style.flex = `0 0 ${maxSize + 50}px`;
+        container.style.width = `${maxSize + 50}px`;
+        container.style.minWidth = `${maxSize + 50}px`;
+        container.style.maxWidth = `${maxSize + 50}px`;
+        // Force canvas to be exactly the same size
+        canvas.style.width = `${maxSize}px`;
+        canvas.style.height = `${maxSize}px`;
+        canvas.style.minWidth = `${maxSize}px`;
+        canvas.style.maxWidth = `${maxSize}px`;
+        canvas.style.minHeight = `${maxSize}px`;
+        canvas.style.maxHeight = `${maxSize}px`;
     });
 }
 
@@ -598,5 +610,12 @@ function webGLStart() {
     
     updateStatus("Ready. Connect to signaling server first.", 'status');
 }
+
+// Handle window resize to rebalance grid
+window.addEventListener('resize', () => {
+    if (Object.keys(canvases).length > 0) {
+        rebalanceVideoGrid();
+    }
+});
 
 window.addEventListener('DOMContentLoaded', webGLStart);
