@@ -110,18 +110,8 @@ function rebalanceVideoGrid() {
         return;
     }
     
-    // Adjust grid columns based on number of canvases
-    if (numCanvases === 1) {
-        videoGrid.style.gridTemplateColumns = '1fr';
-    } else if (numCanvases === 2) {
-        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (numCanvases <= 4) {
-        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (numCanvases <= 6) {
-        videoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    } else {
-        videoGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(300px, 1fr))';
-    }
+    // Always arrange canvases in a single row (side by side)
+    videoGrid.style.gridTemplateColumns = `repeat(${numCanvases}, 1fr)`;
     
     // Adjust canvas display size to maintain aspect ratio
     Object.keys(canvases).forEach(canvasId => {
