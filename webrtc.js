@@ -1,7 +1,6 @@
 let localStream = null;
 let peerConnection = null;
-let localCanvas = null;
-let remoteCanvas = null;
+let canvases = {}; // Track canvases by id: { local: {canvas, container}, remote: {canvas, container} }
 let signalingSocket = null;
 let myClientId = null;
 let myName = '';
@@ -43,6 +42,59 @@ function getCookie(name) {
 function getUrlParameter(name) {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get(name);
+}
+
+function createVideoCanvas(canvasId, title, peerInfo) {
+    const videoGrid = document.getElementById('videoGrid');
+    
+    // Create container div
+    const container = document.createElement('div');
+    container.className = 'video-box';
+    container.id = `${canvasId}-container`;
+    
+    // Create title
+    const h3 = document.createElement('h3');
+    h3.textContent = title;
+    container.appendChild(h3);
+    
+    // Create peer info div
+    const peerInfoDiv = document.createElement('div');
+    peerInfoDiv.className = 'peer-info';
+    peerInfoDiv.id = `${canvasId}PeerInfo`;
+    peerInfoDiv.textContent = peerInfo;
+    container.appendChild(peerInfoDiv);
+    
+    // Create canvas
+    const canvas = document.createElement('canvas');
+    canvas.id = canvasId;
+    canvas.className = 'gl.cubicinterpolation';
+    canvas.width = 640;
+    canvas.height = 480;
+    container.appendChild(canvas);
+    
+    // Add to grid
+    videoGrid.appendChild(container);
+    
+    // Add mouse events for the new canvas
+    addMouseEvents(canvas);
+    
+    return { canvas, container };
+}
+
+function removeVideoCanvas(canvasId) {
+    const canvasData = canvases[canvasId];
+    if (canvasData) {
+        // Clear interval if exists
+        if (canvasData.canvas.intervalID) {
+            clearInterval(canvasData.canvas.intervalID);
+        }
+        // Remove from DOM
+        if (canvasData.container && canvasData.container.parentNode) {
+            canvasData.container.parentNode.removeChild(canvasData.container);
+        }
+        // Remove from tracking
+        delete canvases[canvasId];
+    }
 }
 
 function connectToSignalingServer() {
@@ -114,14 +166,11 @@ function disconnectFromServer() {
         peerConnection = null;
     }
     
-    // Clear remote canvas only
-    if (remoteCanvas && remoteCanvas.intervalID) {
-        clearInterval(remoteCanvas.intervalID);
-    }
+    // Remove remote canvas only
+    removeVideoCanvas('remoteVideo');
     
     remotePeerId = null;
     remotePeerName = '';
-    document.getElementById('remotePeerInfo').textContent = 'Not connected';
     
     updateStatus("Disconnected from server (local video still active)", 'status');
     addLogMessage('Disconnected from server');
@@ -136,7 +185,11 @@ async function handleSignalingMessage(message) {
             const peersInRoom = message.peersInRoom || (message.totalClients - 1);
             updateStatus(`Connected as "${myName}" (Client ${myClientId}) in room "${roomId}". Peers in room: ${peersInRoom}`, 'success');
             addLogMessage(`You are "${myName}" (Client ${myClientId}) in room "${roomId}"`);
-            document.getElementById('localPeerInfo').textContent = `${myName} (ID: ${myClientId}) - Room: ${roomId}`;
+            // Update local peer info if canvas exists
+            const localPeerInfo = document.getElementById('localVideoPeerInfo');
+            if (localPeerInfo) {
+                localPeerInfo.textContent = `${myName} (ID: ${myClientId}) - Room: ${roomId}`;
+            }
             chatEnabled = true;
             document.getElementById('chatInput').disabled = false;
             document.getElementById('sendChatBtn').disabled = false;
@@ -164,7 +217,8 @@ async function handleSignalingMessage(message) {
             addLogMessage(`Peer ${message.clientId} disconnected`);
             if (remotePeerId === message.clientId) {
                 updateStatus(`"${remotePeerName}" disconnected`, 'error');
-                document.getElementById('remotePeerInfo').textContent = 'Not connected';
+                // Remove remote canvas
+                removeVideoCanvas('remoteVideo');
                 if (peerConnection) {
                     peerConnection.close();
                     peerConnection = null;
@@ -250,7 +304,13 @@ async function startLocalVideo() {
             audio: true 
         });
         
-        localCanvas = document.getElementById('localVideo');
+        // Create local canvas dynamically if it doesn't exist
+        if (!canvases['localVideo']) {
+            const peerInfo = myClientId ? `${myName} (ID: ${myClientId}) - Room: ${roomId}` : 'Not connected';
+            canvases['localVideo'] = createVideoCanvas('localVideo', 'Local Camera (You)', peerInfo);
+        }
+        
+        const localCanvas = canvases['localVideo'].canvas;
         initCanvasGL(localCanvas);
         initVideoTexture(localCanvas, localStream, 'local');
         
@@ -276,11 +336,14 @@ async function createPeerConnection() {
     peerConnection.ontrack = (event) => {
         console.log('Received remote track:', event.track.kind);
         
-        if (!remoteCanvas) {
-            remoteCanvas = document.getElementById('remoteVideo');
-            initCanvasGL(remoteCanvas);
+        // Create remote canvas dynamically if it doesn't exist
+        if (!canvases['remoteVideo']) {
+            const peerInfo = remotePeerName ? `${remotePeerName} (ID: ${remotePeerId})` : 'Remote Peer';
+            canvases['remoteVideo'] = createVideoCanvas('remoteVideo', 'Remote Peer', peerInfo);
         }
         
+        const remoteCanvas = canvases['remoteVideo'].canvas;
+        initCanvasGL(remoteCanvas);
         initVideoTexture(remoteCanvas, event.streams[0], 'remote');
         updateStatus("Remote stream received!", 'success');
     };
@@ -339,7 +402,11 @@ async function handleAnswer(answer) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         updateStatus(`Connected to "${remotePeerName}"!`, 'success');
         addLogMessage(`Connection established with "${remotePeerName}"`);
-        document.getElementById('remotePeerInfo').textContent = `${remotePeerName} (ID: ${remotePeerId})`;
+        // Update remote peer info if canvas exists
+        const remotePeerInfo = document.getElementById('remoteVideoPeerInfo');
+        if (remotePeerInfo) {
+            remotePeerInfo.textContent = `${remotePeerName} (ID: ${remotePeerId})`;
+        }
     } catch (error) {
         updateStatus(`Error handling answer: ${error.message}`, 'error');
         console.error("Error handling answer:", error);
@@ -372,7 +439,11 @@ async function handleOffer(offer, senderId, peerName) {
         
         addLogMessage(`Answered call from "${remotePeerName}"`);
         updateStatus(`Answering call from "${remotePeerName}"...`, 'status');
-        document.getElementById('remotePeerInfo').textContent = `${remotePeerName} (ID: ${remotePeerId})`;
+        // Update remote peer info if canvas exists
+        const remotePeerInfo = document.getElementById('remoteVideoPeerInfo');
+        if (remotePeerInfo) {
+            remotePeerInfo.textContent = `${remotePeerName} (ID: ${remotePeerId})`;
+        }
     } catch (error) {
         updateStatus(`Error handling offer: ${error.message}`, 'error');
         console.error("Error handling offer:", error);
@@ -478,21 +549,18 @@ function loadCredentialsFromCookies() {
 }
 
 function webGLStart() {
-    const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-    for (let canvas of canvasArray) {
-        addMouseEvents(canvas);
-    }
-
+    // Event handlers will be added dynamically as canvases are created
     addEventHandlers(() => {
-        const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-        for (let canvas of canvasArray) {
+        // Apply filter to all existing canvases
+        Object.keys(canvases).forEach(canvasId => {
+            const canvas = canvases[canvasId].canvas;
             const gl = canvas.gl;
             if (gl) {
                 gl.filterMode = (gl.filterMode + 1) % 4;
                 const texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
                 cubicFilter(gl, texture, canvas.width, canvas.height);
             }
-        }
+        });
     });
     
     // Load saved credentials from cookies
