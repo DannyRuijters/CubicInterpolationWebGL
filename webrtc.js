@@ -19,6 +19,32 @@ const configuration = {
     ]
 };
 
+// Cookie helper functions
+function setCookie(name, value, days = 365) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    const expires = "expires=" + date.toUTCString();
+    document.cookie = name + "=" + encodeURIComponent(value) + ";" + expires + ";path=/";
+}
+
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) {
+            return decodeURIComponent(c.substring(nameEQ.length, c.length));
+        }
+    }
+    return null;
+}
+
+function getUrlParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
 function connectToSignalingServer() {
     myName = document.getElementById('userName').value.trim() || `User-${Date.now() % 10000}`;
     roomId = document.getElementById('roomId').value.trim();
@@ -27,6 +53,10 @@ function connectToSignalingServer() {
         updateStatus('Please enter a Call ID', 'error');
         return;
     }
+    
+    // Store username and roomId in cookies
+    setCookie('webrtc_username', myName);
+    setCookie('webrtc_roomId', roomId);
     
     updateStatus('Connecting to signaling server...', 'status');
     
@@ -443,6 +473,28 @@ function updateStatus(message, type = 'status') {
     statusDiv.className = 'status ' + type;
 }
 
+function loadCredentialsFromCookies() {
+    const savedUsername = getCookie('webrtc_username');
+    const urlRoomId = getUrlParameter('roomid');
+    const savedRoomId = getCookie('webrtc_roomId');
+    
+    if (savedUsername) {
+        const userNameInput = document.getElementById('userName');
+        if (userNameInput) {
+            userNameInput.value = savedUsername;
+        }
+    }
+    
+    // Prioritize URL parameter over cookie for roomId
+    const roomIdToUse = urlRoomId || savedRoomId;
+    if (roomIdToUse) {
+        const roomIdInput = document.getElementById('roomId');
+        if (roomIdInput) {
+            roomIdInput.value = roomIdToUse;
+        }
+    }
+}
+
 function webGLStart() {
     const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
     for (let canvas of canvasArray) {
@@ -460,6 +512,9 @@ function webGLStart() {
             }
         }
     });
+    
+    // Load saved credentials from cookies
+    loadCredentialsFromCookies();
     
     updateStatus("Ready. Connect to signaling server first.", 'status');
 }
