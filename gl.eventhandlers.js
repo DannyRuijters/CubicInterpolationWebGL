@@ -1,6 +1,6 @@
-var lastMouseX = 0;
-var lastMouseY = 0;
-var lastCanvas = null;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let lastCanvas = null;
 
 function handleMouseDown(event) {
     lastCanvas = event.target;
@@ -14,18 +14,18 @@ function handleMouseUp(event) {
 
 function handleMouseMove(event) {
     if (lastCanvas != null) {
-        var newX = event.clientX;
-        var newY = event.clientY;
-        var deltaX = newX - lastMouseX;
-        var deltaY = newY - lastMouseY;
+        const newX = event.clientX;
+        const newY = event.clientY;
+        const deltaX = newX - lastMouseX;
+        const deltaY = newY - lastMouseY;
         lastMouseX = newX;
         lastMouseY = newY;
 
-        var canvas = lastCanvas;
-        var gl = canvas.gl;
+        const canvas = lastCanvas;
+        const gl = canvas.gl;
         gl.translateX -= deltaX * gl.zoom / canvas.width;
         gl.translateY += deltaY * gl.zoom / canvas.height;
-        var texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
+        const texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
         cubicFilter(gl, texture, canvas.width, canvas.height);
         //window.requestAnimFrame(tick);
         event.preventDefault();
@@ -34,12 +34,12 @@ function handleMouseMove(event) {
 
 function handleMouseWheel(event) {
     // cross-browser wheel delta
-    var event = window.event || event; // old IE support
-    var delta = Math.max(-1, Math.min(1, (event.wheelDelta || -event.detail)));
-    var canvas = event.target;
-    var gl = canvas.gl;
+    let event = window.event || event; // old IE support
+    const delta = Math.max(-1, Math.min(1, (event.wheelDelta || -event.detail)));
+    const canvas = event.target;
+    const gl = canvas.gl;
     gl.zoom -= 0.1 * delta;
-    var texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
+    const texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
     cubicFilter(gl, texture, canvas.width, canvas.height);
     event.preventDefault();
     return false;
@@ -58,18 +58,18 @@ function addMouseEvents(element) {
 }
 
 function windowResize() {
-    var devicePixelRatio = window.devicePixelRatio || 1;
-    var canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-    for (var index = 0; index < canvasArray.length; ++index) {
-        var canvas = canvasArray[index];
+    const devicePixelRatio = window.devicePixelRatio || 1;
+    const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
+    for (let index = 0; index < canvasArray.length; ++index) {
+        const canvas = canvasArray[index];
         // set the size of the drawingBuffer based on the size it's displayed.
-        var width = canvas.clientWidth * devicePixelRatio;
-        var height = canvas.clientHeight * devicePixelRatio;
+        const width = canvas.clientWidth * devicePixelRatio;
+        const height = canvas.clientHeight * devicePixelRatio;
         if (width != canvas.width || height != canvas.height) {
             canvas.width = width;
             canvas.height = height;
-            var gl = canvas.gl;
-            var texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : texture;
+            const gl = canvas.gl;
+            const texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : texture;
             cubicFilter(gl, texture, canvas.width, canvas.height);
         }
     }

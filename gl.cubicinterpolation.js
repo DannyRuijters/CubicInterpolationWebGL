@@ -30,7 +30,7 @@ When using this code in a scientific project, please cite one or all of the foll
 \*-------------------------------------------------------------------------------------------------------------------*/
 
 function initGL(canvas) {
-    var gl;
+    let gl;
     try {
         gl = canvas.getContext("webgl2");
         if (gl == null) { gl = canvas.getContext("experimental-webgl2"); }
@@ -53,7 +53,7 @@ function initGL(canvas) {
 }
 
 function loadShader(gl, str, type) {
-    var shader = gl.createShader(type);
+    const shader = gl.createShader(type);
     gl.shaderSource(shader, str);
     gl.compileShader(shader);
 
@@ -66,7 +66,7 @@ function loadShader(gl, str, type) {
 }
 
 function compileShader(gl, fragmentShader, vertexShader) {
-    shaderProgram = gl.createProgram();
+    const shaderProgram = gl.createProgram();
     gl.attachShader(shaderProgram, vertexShader);
     gl.attachShader(shaderProgram, fragmentShader);
     gl.linkProgram(shaderProgram);
@@ -84,7 +84,7 @@ function compileShader(gl, fragmentShader, vertexShader) {
 }
 
 function initShaders(gl) {
-    var shaderPrefilterStr = '\
+    const shaderPrefilterStr = '\
         varying vec2 vTextureCoord;                                                 \n\
         uniform sampler2D uSampler;                                                 \n\
         uniform vec2 increment;                                                     \n\
@@ -109,7 +109,7 @@ function initShaders(gl) {
             gl_FragColor = w;                                                       \n\
         }';
     
-    var shaderCubicStr = '\
+    const shaderCubicStr = '\
         varying vec2 vTextureCoord;                                                 \n\
         uniform vec2 nrOfPixels;                                                    \n\
         uniform mat3 matrix;                                                        \n\
@@ -147,7 +147,7 @@ function initShaders(gl) {
             gl_FragColor = mix(tex01, tex00, g0.y);  //weigh along the y-direction  \n\
         }';
     
-    var shaderSimpleStr = '\
+    const shaderSimpleStr = '\
         varying vec2 vTextureCoord;                                                 \n\
         uniform mat3 matrix;                                                        \n\
         uniform sampler2D uSampler;                                                 \n\
@@ -156,7 +156,7 @@ function initShaders(gl) {
             gl_FragColor = texture2D(uSampler, coordTex);                           \n\
         }';
     
-    var shaderVertexStr = '\
+    const shaderVertexStr = '\
         attribute vec2 aTextureCoord;                                               \n\
         varying vec4 vColor;                                                        \n\
         varying vec2 vTextureCoord;                                                 \n\
@@ -167,14 +167,14 @@ function initShaders(gl) {
             vTextureCoord = aTextureCoord;                                          \n\
         }';
     
-    var highp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
-    var precisionTxt = (highp.precision != 0) ?
+    const highp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+    const precisionTxt = (highp.precision != 0) ?
         'precision highp float;\nprecision highp sampler2D;\n' :
         'precision mediump float;\nprecision mediump sampler2D;\n';
-    var fragmentPrefilter = loadShader(gl, precisionTxt+shaderPrefilterStr, gl.FRAGMENT_SHADER);
-    var fragmentCubic = loadShader(gl, precisionTxt+shaderCubicStr, gl.FRAGMENT_SHADER);
-    var fragmentSimple = loadShader(gl, precisionTxt+shaderSimpleStr, gl.FRAGMENT_SHADER);
-    var vertexShader = loadShader(gl, shaderVertexStr, gl.VERTEX_SHADER);
+    const fragmentPrefilter = loadShader(gl, precisionTxt+shaderPrefilterStr, gl.FRAGMENT_SHADER);
+    const fragmentCubic = loadShader(gl, precisionTxt+shaderCubicStr, gl.FRAGMENT_SHADER);
+    const fragmentSimple = loadShader(gl, precisionTxt+shaderSimpleStr, gl.FRAGMENT_SHADER);
+    const vertexShader = loadShader(gl, shaderVertexStr, gl.VERTEX_SHADER);
 
     gl.shaderPrefilter = compileShader(gl, fragmentPrefilter, vertexShader);
     gl.shaderPrefilter.incrementUniform = gl.getUniformLocation(gl.shaderPrefilter, "increment");
@@ -188,31 +188,31 @@ function initShaders(gl) {
 function initTextureCoordBuffer(gl) {
     gl.textureCoordBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.textureCoordBuffer);
-    var textureCoords = [1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0];
+    const textureCoords = [1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoords), gl.STATIC_DRAW);
     gl.textureCoordBuffer.itemSize = 2;
     gl.textureCoordBuffer.numItems = 4;
 }
 
 function initTextureFramebuffer(gl, width, height) {
-    var rttFramebuffer = gl.createFramebuffer();
+    const rttFramebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffer);
 
-    var rttTexture = gl.createTexture();
+    const rttTexture = gl.createTexture();
     rttTexture.width = width;
     rttTexture.height = height;
     gl.bindTexture(gl.TEXTURE_2D, rttTexture);
-    var extFloat = gl.getExtension('OES_texture_float');
-    var extFloatBuffer = gl.getExtension('WEBGL_color_buffer_float');
-    var extHalfFloat = gl.getExtension('OES_texture_half_float');
-    var extHalfFloatBuffer = gl.getExtension('EXT_color_buffer_half_float');
-    var texType = (extFloat && extFloatBuffer) ? gl.FLOAT : ((extHalfFloat && extHalfFloatBuffer) ? extHalfFloat.HALF_FLOAT_OES : gl.UNSIGNED_BYTE);
-    var internalType = (extFloat && extFloatBuffer) ? gl.RGBA32F : ((extHalfFloat && extHalfFloatBuffer) ? gl.RGBA16F : gl.RGBA);
+    const extFloat = gl.getExtension('OES_texture_float');
+    const extFloatBuffer = gl.getExtension('WEBGL_color_buffer_float');
+    const extHalfFloat = gl.getExtension('OES_texture_half_float');
+    const extHalfFloatBuffer = gl.getExtension('EXT_color_buffer_half_float');
+    const texType = (extFloat && extFloatBuffer) ? gl.FLOAT : ((extHalfFloat && extHalfFloatBuffer) ? extHalfFloat.HALF_FLOAT_OES : gl.UNSIGNED_BYTE);
+    const internalType = (extFloat && extFloatBuffer) ? gl.RGBA32F : ((extHalfFloat && extHalfFloatBuffer) ? gl.RGBA16F : gl.RGBA);
     gl.texImage2D(gl.TEXTURE_2D, 0, internalType, width, height, 0, gl.RGBA, texType, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    var renderbuffer = gl.createRenderbuffer();
+    const renderbuffer = gl.createRenderbuffer();
     gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
     gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
 
@@ -226,20 +226,20 @@ function initTextureFramebuffer(gl, width, height) {
 }
 
 function initCanvasGL(canvas) {
-    var devicePixelRatio = window.devicePixelRatio || 1;
+    const devicePixelRatio = window.devicePixelRatio || 1;
     // set the size of the drawingBuffer based on the size it's displayed.
     canvas.width = canvas.clientWidth * devicePixelRatio;
     canvas.height = canvas.clientHeight * devicePixelRatio;
     
-    var gl = initGL(canvas);
+    const gl = initGL(canvas);
     initShaders(gl);
     initTextureCoordBuffer(gl);
     return gl;
 }
 
 function freeProgram(gl, program) {
-    var shaders = gl.getAttachedShaders(program);
-    for (var n=0, n_max=shaders.length; n < n_max; n++) {
+    const shaders = gl.getAttachedShaders(program);
+    for (let n=0, n_max=shaders.length; n < n_max; n++) {
         gl.deleteShader(shaders[n]);
     }
     gl.deleteProgram(program);
@@ -248,7 +248,7 @@ function freeProgram(gl, program) {
 function freeTextureFramebuffer(gl, buffer) {
     if (buffer && buffer.framebuffer) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, buffer.framebuffer);
-        var renderbuffer = gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+        const renderbuffer = gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
         gl.deleteRenderbuffer(renderbuffer);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.deleteFramebuffer(buffer.framebuffer);
@@ -318,12 +318,17 @@ function cubicFilter(gl, texture, width, height) {
     // Draw final image
     gl.bindFramebuffer(gl.FRAMEBUFFER, gl.buffer);
     gl.viewport(0, 0, width, height);
-    var program = (gl.filterMode < 2) ? gl.shaderCubic : gl.shaderSimple;
+    const program = (gl.filterMode < 2) ? gl.shaderCubic : gl.shaderSimple;
     gl.useProgram(program);
     gl.uniform2f(gl.shaderCubic.nrOfPixelsUniform, texture.width, texture.height);
-    var cos = Math.cos(gl.rotateAngle) * gl.zoom;
-    var sin = Math.sin(gl.rotateAngle);
-    var matrix = [cos, -sin, 0, sin, cos, 0, gl.translateX, gl.translateY, 1];
+    const cos = Math.cos(gl.rotateAngle) * gl.zoom;
+    const sin = Math.sin(gl.rotateAngle);
+    // Calculate aspect ratio correction
+    const textureAspect = texture.width / texture.height;
+    const canvasAspect = width / height;
+    const scaleX = (canvasAspect > textureAspect) ? 1.0 : (textureAspect / canvasAspect);
+    const scaleY = (canvasAspect > textureAspect) ? (canvasAspect / textureAspect) : 1.0;
+    const matrix = [cos * scaleX, -sin, 0, sin, cos * scaleY, 0, gl.translateX, gl.translateY, 1];
     gl.uniformMatrix3fv(program.matrixUniform, false, matrix);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -335,9 +340,9 @@ function cubicFilter(gl, texture, width, height) {
 }
 
 function handleLoadedImage(canvas, image, width, height) {
-    var gl = canvas.gl;
+    const gl = canvas.gl;
     if (!gl.myTexture) gl.myTexture = gl.createTexture();
-    var texture = gl.myTexture;
+    let texture = gl.myTexture;
     texture.width = width;
     texture.height = height;
 
@@ -356,6 +361,6 @@ function handleLoadedImage(canvas, image, width, height) {
 
     prefilterX(gl, texture);
     prefilterY(gl, texture);
-    var texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : texture;
+    texture = (gl.filterMode == 0) ? gl.rttFramebufferTextureY.texture : texture;
     cubicFilter(gl, texture, canvas.width, canvas.height);
 }
