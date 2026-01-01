@@ -374,7 +374,12 @@ function addLogMessage(message) {
 
 function updateVideoGrid() {
     const grid = document.getElementById('videoGrid');
-    if (!grid) return;
+    if (!grid) {
+        console.error('Video grid element not found');
+        return;
+    }
+    
+    console.log('Updating video grid, localStream:', !!localStream, 'peers:', Object.keys(peers).length);
     
     // Clear existing grid
     grid.innerHTML = '';
@@ -443,9 +448,12 @@ function updateVideoGrid() {
         slot.appendChild(overlay);
         grid.appendChild(slot);
         
-        // Initialize WebGL and video texture
-        initCanvasGL(canvas);
-        initVideoTexture(canvas, participant.stream, participant.isSelf ? 'local' : `remote-${participant.id}`);
+        // Initialize WebGL and video texture after canvas is in DOM
+        setTimeout(() => {
+            initCanvasGL(canvas);
+            addMouseEvents(canvas);
+            initVideoTexture(canvas, participant.stream, participant.isSelf ? 'local' : `remote-${participant.id}`);
+        }, 0);
         
         canvases[participant.id] = canvas;
     });
@@ -541,23 +549,6 @@ function loadCredentialsFromCookies() {
 }
 
 function webGLStart() {
-    const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-    for (let canvas of canvasArray) {
-        addMouseEvents(canvas);
-    }
-
-    addEventHandlers(() => {
-        const canvasArray = document.getElementsByClassName("gl.cubicinterpolation");
-        for (let canvas of canvasArray) {
-            const gl = canvas.gl;
-            if (gl) {
-                gl.filterMode = (gl.filterMode + 1) % 4;
-                const texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : gl.myTexture;
-                cubicFilter(gl, texture, canvas.width, canvas.height);
-            }
-        }
-    });
-    
     // Load saved credentials from cookies
     loadCredentialsFromCookies();
     
