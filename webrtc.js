@@ -72,7 +72,6 @@ function connectToSignalingServer() {
                 roomId: roomId
             });
             document.getElementById('connectBtn').disabled = true;
-            document.getElementById('startBtn').disabled = false;
             document.getElementById('disconnectBtn').disabled = false;
         };
         
@@ -94,7 +93,6 @@ function connectToSignalingServer() {
         signalingSocket.onclose = () => {
             updateStatus('Disconnected from signaling server', 'error');
             document.getElementById('connectBtn').disabled = false;
-            document.getElementById('startBtn').disabled = true;
             document.getElementById('disconnectBtn').disabled = true;
             document.getElementById('chatInput').disabled = true;
             document.getElementById('sendChatBtn').disabled = true;
@@ -240,9 +238,6 @@ async function startLocalVideo() {
         localCanvas = document.getElementById('localVideo');
         initCanvasGL(localCanvas);
         initVideoTexture(localCanvas, localStream, 'local');
-        
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('stopBtn').disabled = false;
         
         updateStatus("Local camera started. Waiting for peer...", 'success');
         addLogMessage('Local camera started');
@@ -390,9 +385,6 @@ function stopVideo() {
     
     remotePeerId = null;
     
-    document.getElementById('startBtn').disabled = signalingSocket ? false : true;
-    document.getElementById('stopBtn').disabled = true;
-    
     updateStatus("Stopped all video streams", 'status');
     addLogMessage('Video stopped');
 }
@@ -515,6 +507,9 @@ function webGLStart() {
     
     // Load saved credentials from cookies
     loadCredentialsFromCookies();
+    
+    // Automatically start local camera
+    startLocalVideo();
     
     updateStatus("Ready. Connect to signaling server first.", 'status');
 }
