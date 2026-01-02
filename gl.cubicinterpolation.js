@@ -341,22 +341,24 @@ function cubicFilter(gl, texture, width, height) {
 
 function handleLoadedImage(canvas, image, width, height) {
     const gl = canvas.gl;
-    if (!gl.myTexture) gl.myTexture = gl.createTexture();
-    let texture = gl.myTexture;
-    texture.width = width;
-    texture.height = height;
+    let texture = gl.myTexture ? gl.myTexture : gl.createTexture();
 
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    if (!gl.rttFramebufferTextureY) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-        gl.rttFramebufferTextureX = initTextureFramebuffer(gl, texture.width, texture.height);
-        gl.rttFramebufferTextureY = initTextureFramebuffer(gl, texture.width, texture.height);
-    } else {
+    if (gl.myTexture && gl.myTexture.width == width && gl.myTexture.height == height) {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    } else {
+        freeTextureFramebuffer(gl, gl.rttFramebufferTextureX);
+        freeTextureFramebuffer(gl, gl.rttFramebufferTextureY);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.rttFramebufferTextureX = initTextureFramebuffer(gl, width, height);
+        gl.rttFramebufferTextureY = initTextureFramebuffer(gl, width, height);
+        texture.width = width;
+        texture.height = height;
+        gl.myTexture = texture;
     }
 
     prefilterX(gl, texture);
